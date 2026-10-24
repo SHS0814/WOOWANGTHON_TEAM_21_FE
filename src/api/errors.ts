@@ -67,6 +67,7 @@ const GUARDIAN_MESSAGES: Partial<Record<ErrorCode, string>> = {
   photo_expired: '보관 기간이 지난 사진이에요.',
   event_already_started: '이 시간의 약은 이미 진행 중이에요.',
   validation_error: '입력한 값을 확인해 주세요.',
+  no_photo: '사진을 찍지 못했어요. 다시 찍어 주세요.',
 };
 
 export function guardianMessage(e: unknown): string {

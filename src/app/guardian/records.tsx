@@ -67,10 +67,18 @@ function Flags({ s }: { s: Summary }) {
 function DayRow({ s }: { s: Summary }) {
   const date = new Date(`${s.period_start}T00:00:00`);
   const c = s.counts;
+  const label = `${date.getMonth() + 1}/${date.getDate()} (${WEEKDAY_LABELS[mondayIndex(date)]})`;
+  if (c.scheduled === 0) {
+    return (
+      <View style={styles.row}>
+        <T style={{ color: colors.subtle }}>– {label} 일정 없음</T>
+      </View>
+    );
+  }
   return (
     <View style={styles.row}>
       <T>
-        {s.all_normal ? '✓' : '!'} {date.getMonth() + 1}/{date.getDate()} ({WEEKDAY_LABELS[mondayIndex(date)]}) {taken(s)}/{c.scheduled}
+        {s.all_normal ? '✓' : '!'} {label} {taken(s)}/{c.scheduled}
         {c.taken_guardian ? ` · 보호자 판정 ${c.taken_guardian}` : ''}
         {c.not_taken ? ` · 안 드심 ${c.not_taken}` : ''}
         {c.open_handoffs ? ` · 처리할 일 ${c.open_handoffs}` : ''}

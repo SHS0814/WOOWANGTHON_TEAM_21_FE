@@ -76,9 +76,11 @@ export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder' }
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="사진 찍기"
-            disabled={busy}
+            // 실제 서버는 사진 없는 업로드를 받지 않으므로 카메라가 준비될 때까지 기다린다
+            disabled={busy || (!ready && api.mode !== 'mock')}
+            accessibilityState={{ disabled: busy || (!ready && api.mode !== 'mock') }}
             onPress={shoot}
-            style={({ pressed }) => [styles.shutter, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [styles.shutter, (pressed || (!ready && api.mode !== 'mock')) && { opacity: 0.5 }]}
           >
             <Text style={styles.shutterText}>{busy ? '…' : '찍기'}</Text>
           </Pressable>

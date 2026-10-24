@@ -77,10 +77,10 @@ export default function Schedule() {
           <T variant="title">{spokenHHMM(times[k]!)}</T>
           <View style={styles.steps}>
             <View style={{ flex: 1 }}>
-              <BigButton size="guardian" variant="secondary" label={`${STEP_MIN}분 빠르게`} onPress={() => setTimes({ ...times, [k]: shift(times[k]!, -STEP_MIN) })} />
+              <BigButton size="guardian" variant="secondary" label={`${STEP_MIN}분 빠르게`} onPress={() => setTimes((t) => ({ ...t, [k]: shift(t[k]!, -STEP_MIN) }))} />
             </View>
             <View style={{ flex: 1 }}>
-              <BigButton size="guardian" variant="secondary" label={`${STEP_MIN}분 늦게`} onPress={() => setTimes({ ...times, [k]: shift(times[k]!, STEP_MIN) })} />
+              <BigButton size="guardian" variant="secondary" label={`${STEP_MIN}분 늦게`} onPress={() => setTimes((t) => ({ ...t, [k]: shift(t[k]!, STEP_MIN) }))} />
             </View>
           </View>
         </View>

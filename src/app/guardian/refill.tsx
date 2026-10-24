@@ -110,7 +110,8 @@ export default function Refill() {
         </T>
       ) : (
         <T variant="title" style={{ color: colors.attention }}>
-          ! 남은 칸이 없어요
+          {/* covered_until 이 null: 남은 칸이 없거나, 다음 복약 칸부터 비어 있다 (3.12) */}
+          {st.remaining_cells > 0 ? '! 다음 약 칸이 비어 있어요' : '! 남은 칸이 없어요'}
         </T>
       )}
       {st.needs_refill ? <T style={{ color: colors.attention, fontWeight: '700' }}>! 곧 채워야 해요</T> : null}

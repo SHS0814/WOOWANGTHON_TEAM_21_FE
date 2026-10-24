@@ -50,7 +50,7 @@ export function BaselineReview({ refill, layout, onDone }: { refill: Refill; lay
                   size="guardian"
                   variant={answers[c.cell_id] === st ? 'primary' : 'secondary'}
                   label={`${answers[c.cell_id] === st ? '✓ ' : ''}${st === 'full' ? '차 있어요' : '비어 있어요'}`}
-                  onPress={() => setAnswers({ ...answers, [c.cell_id]: st })}
+                  onPress={() => setAnswers((a) => ({ ...a, [c.cell_id]: st }))}
                 />
               </View>
             ))}
