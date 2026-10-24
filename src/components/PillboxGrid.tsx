@@ -48,9 +48,10 @@ export function PillboxGrid({ layout, cells, targetCellId }: Props) {
               .filter(Boolean)
               .join(', ');
             return (
-              <View key={c} accessible accessibilityLabel={label} style={[styles.cell, isTarget && styles.target, att && styles.flagged]}>
+              <View key={c} accessible accessibilityLabel={label} style={[styles.cell, att && styles.flagged, isTarget && styles.target]}>
                 <Text style={styles.symbol}>{res ? CELL_SYMBOL[res.ai_state] : ''}</Text>
-                {att ? <Text style={styles.mark}>{attentionMark(att)}</Text> : isTarget ? <Text style={styles.tag}>이번</Text> : null}
+                {att ? <Text style={styles.mark}>{attentionMark(att)}</Text> : null}
+                {isTarget ? <Text style={styles.tag}>이번</Text> : null}
               </View>
             );
           })}
@@ -82,7 +83,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.bg,
   },
-  target: { borderWidth: 4, borderColor: colors.primary },
+  target: { borderWidth: 4, borderStyle: 'solid', borderColor: colors.primary },
   flagged: { borderWidth: 4, borderStyle: 'dashed', borderColor: colors.attention, backgroundColor: colors.attentionBg },
   symbol: { fontSize: 22, color: colors.text, fontWeight: '700' },
   mark: { fontSize: 16, fontWeight: '900', color: colors.attention },
