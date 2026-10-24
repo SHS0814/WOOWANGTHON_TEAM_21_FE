@@ -6,6 +6,7 @@ import { api, type MockScenario } from '@/api';
 import { SCENARIO_LABELS } from '@/components/MockBanner';
 import { useRole } from '@/lib/role';
 import { colors } from '@/theme';
+import { goBackOr } from '@/lib/nav';
 
 /** 개발용 도구. 모의 구현일 때만 열린다. 시연 영상에서는 "모의·시뮬레이션" 표시가 같이 보인다 */
 export default function DevPanel() {
@@ -63,7 +64,7 @@ export default function DevPanel() {
         label="오늘 기록 초기화"
         onPress={async () => {
           await dev.reset();
-          setMsg('초기화했어요. 가족 연결은 유지돼요.');
+          setMsg('오늘 기록을 초기화했어요. 연결과 설정은 유지돼요.');
         }}
       />
       <Btn
@@ -75,7 +76,7 @@ export default function DevPanel() {
         }}
       />
       {msg ? <Text style={styles.msg}>{msg}</Text> : null}
-      <Btn label="닫기" onPress={() => router.back()} />
+      <Btn label="닫기" onPress={() => goBackOr('/')} />
     </ScrollView>
   );
 }

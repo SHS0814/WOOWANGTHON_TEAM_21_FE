@@ -67,6 +67,8 @@ export interface Reading {
   /** true 이면 화면에 "모의 판독" 표시 (헌장 6장) */
   is_mock: boolean;
   cells: CellReading[];
+  /** 서버가 기대 상태와 비교해서 보호자가 봐야 한다고 표시한 칸 (애매한 칸, 기대와 다른 칸) */
+  flagged_cell_ids: string[];
   created_at: string;
 }
 
@@ -96,6 +98,8 @@ export interface DoseEvent {
   state: DoseState;
   outcome: DoseOutcome;
   resolved_at: string | null;
+  /** "약 드실 시간이에요" 1회 안내를 한 시각 (칸 그대로, 안내 모드) */
+  reminded_at: string | null;
   /** 재질문 횟수 (0~2) */
   reask_count: number;
   photos: Photo[];

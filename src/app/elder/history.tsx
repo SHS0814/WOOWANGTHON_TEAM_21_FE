@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { Image, StyleSheet, View } from 'react-native';
 
 import { api, type DoseEvent } from '@/api';
@@ -10,6 +9,7 @@ import { useApiData } from '@/lib/useApiData';
 import { useFamily } from '@/lib/useFamily';
 import { spokenTime, TIME_OF_DAY_LABELS } from '@/lib/time';
 import { colors } from '@/theme';
+import { goBackOr } from '@/lib/nav';
 
 /** E8 "나 약 먹었나?" — 오늘 기록을 시각과 사진으로 (MVP #3, 이중 복용 방지) */
 export default function History() {
@@ -17,7 +17,7 @@ export default function History() {
   const { data: events } = useApiData(() => api.getToday());
 
   return (
-    <Screen scroll footer={<BigButton label="돌아가기" onPress={() => router.back()} />}>
+    <Screen scroll footer={<BigButton label="돌아가기" onPress={() => goBackOr('/elder')} />}>
       <T variant="elderTitle">오늘 약 기록</T>
       {events?.map((ev) => (
         <Row key={ev.id} ev={ev} guardianName={family?.guardian_display_name} />

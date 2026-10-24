@@ -25,7 +25,7 @@ export default function Ask() {
   const tod = TIME_OF_DAY_LABELS[ev.time_of_day];
 
   return (
-    <Screen center footer={<BigButton label="사진 찍기" onPress={() => router.push({ pathname: '/elder/camera/[id]', params: { id } })} />}>
+    <Screen center footer={<BigButton label="사진 찍기" onPress={() => router.replace({ pathname: '/elder/camera/[id]', params: { id } })} />}>
       {ev.simulated ? <SimulationTag /> : null}
       {ev.reask_count > 0 ? <T variant="elderBody">다시 여쭤봐요.</T> : null}
       <T variant="elderTitle">

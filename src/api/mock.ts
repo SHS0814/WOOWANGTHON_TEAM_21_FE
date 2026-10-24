@@ -179,6 +179,7 @@ class MockApi implements Api {
         state: 'scheduled',
         outcome: null,
         resolved_at: null,
+        reminded_at: null,
         reask_count: 0,
         photos: [],
         readings: [],
@@ -201,14 +202,14 @@ class MockApi implements Api {
   // ---- 가족·짝짓기 ----
 
   async getFamily() {
-    return (await this.ready()).family;
+    return copy((await this.ready()).family);
   }
 
   async createFamily(input: { elder_display_name: string; guardian_display_name: string }) {
     const s = await this.ready();
     s.family = { id: 'family-1', ...input, consent_at: null };
     await this.commit();
-    return s.family;
+    return copy(s.family);
   }
 
   async createPairingCode(): Promise<PairingCode> {
@@ -226,7 +227,7 @@ class MockApi implements Api {
     // 같은 기기에서 보호자 흐름을 거치지 않았으면 모의 가족으로 연결한다
     if (!s.family) s.family = { id: 'family-1', ...MOCK_SEED.family, consent_at: null };
     await this.commit();
-    return s.family;
+    return copy(s.family);
   }
 
   async consent() {
@@ -245,13 +246,13 @@ class MockApi implements Api {
     if (!s.family) s.family = { id: 'family-1', ...MOCK_SEED.family, consent_at: null };
     Object.assign(s.family, input);
     await this.commit();
-    return s.family;
+    return copy(s.family);
   }
 
   // ---- 약통·일정 ----
 
   async getPillbox() {
-    return (await this.ready()).pillbox;
+    return copy((await this.ready()).pillbox);
   }
 
   async detectPillbox(_photoUri: string | null) {
@@ -271,11 +272,11 @@ class MockApi implements Api {
     s.eventsDate = '';
     this.rollDay();
     await this.commit();
-    return s.pillbox;
+    return copy(s.pillbox);
   }
 
   async getSchedule() {
-    return (await this.ready()).schedule;
+    return copy((await this.ready()).schedule);
   }
 
   async saveDoseTimes(times: Partial<Record<TimeOfDay, string>>) {
@@ -288,17 +289,17 @@ class MockApi implements Api {
       if (t && ev.state === 'scheduled') ev.scheduled_at = atTime(today, t).toISOString();
     }
     await this.commit();
-    return s.schedule;
+    return copy(s.schedule);
   }
 
   // ---- 복약 건 ----
 
   async getToday() {
-    return (await this.ready()).events;
+    return copy((await this.ready()).events);
   }
 
   async getEvent(id: string) {
-    return (await this.ready()).events.find((e) => e.id === id) ?? null;
+    return copy((await this.ready()).events.find((e) => e.id === id) ?? null);
   }
 
   private mockReading(ev: DoseEvent, scenario: MockScenario) {
@@ -326,12 +327,16 @@ class MockApi implements Api {
       const j = t + 1 < order.length ? t + 1 : -1;
       if (j >= 0) cells[j] = { cell_id: order[j], state: 'empty', confidence: 0.91 };
     }
+    const flagged = cells
+      .filter((c) => c.state === 'unclear' || (c.state === 'empty' && order.indexOf(c.cell_id) > t))
+      .map((c) => c.cell_id);
     return {
       id: this.nextId('reading'),
       provider: MOCK_PROVIDER,
       model: MOCK_MODEL,
       is_mock: true,
       cells,
+      flagged_cell_ids: flagged,
       created_at: new Date().toISOString(),
     };
   }
@@ -353,7 +358,7 @@ class MockApi implements Api {
     const s = await this.ready();
     const ev = s.events.find((e) => e.id === eventId);
     if (!ev) throw new Error('복약 건을 찾을 수 없어요');
-    const wasReminded = ev.state === 'reminded';
+    const wasReminded = !!ev.reminded_at;
     ev.state = 'reading';
     ev.photos.push({ id: this.nextId('photo'), uri: photoUri, taken_at: new Date().toISOString() });
     await this.commit();
@@ -384,6 +389,7 @@ class MockApi implements Api {
       // R-009 설정 + R-007 C3: 복약 시간(+30분) 안이고, 안내 모드이고, 아직 안내하지 않았을 때만 1회 안내
       if (s.settings.unchanged_policy === 'remind' && !wasReminded && !late) {
         ev.state = 'reminded';
+        ev.reminded_at = new Date().toISOString();
         result = { next: 'reminded', event: ev };
       } else {
         this.handOff(ev, 'unchanged');
@@ -396,14 +402,14 @@ class MockApi implements Api {
       result = { next: 'done', event: ev };
     }
     await this.commit();
-    return result;
+    return copy(result);
   }
 
   // ---- 인계 ----
 
   async getOpenHandoffs() {
     const s = await this.ready();
-    return s.events.filter((e) => e.state === 'handed_off' && e.handoff && !e.handoff.verdict && !e.handoff.acknowledged_at);
+    return copy(s.events.filter((e) => e.state === 'handed_off' && e.handoff && !e.handoff.verdict && !e.handoff.acknowledged_at));
   }
 
   private findHandoff(id: string): { ev: DoseEvent; h: Handoff } {
@@ -421,7 +427,7 @@ class MockApi implements Api {
     ev.outcome = verdict;
     ev.resolved_at = h.verdict_at;
     await this.commit();
-    return h;
+    return copy(h);
   }
 
   async acknowledgeHandoff(handoffId: string) {
@@ -432,7 +438,7 @@ class MockApi implements Api {
     ev.outcome = 'acknowledged';
     ev.resolved_at = h.acknowledged_at;
     await this.commit();
-    return h;
+    return copy(h);
   }
 
   // ---- 리필 ----
@@ -487,14 +493,14 @@ class MockApi implements Api {
   }
 
   async getSettings() {
-    return (await this.ready()).settings;
+    return copy((await this.ready()).settings);
   }
 
   async updateSettings(patch: Partial<Settings>) {
     const s = await this.ready();
     s.settings = { ...s.settings, ...patch };
     await this.commit();
-    return s.settings;
+    return copy(s.settings);
   }
 
   // ---- 개발용 ----
@@ -517,7 +523,7 @@ class MockApi implements Api {
         ev.simulated = true;
       }
       await this.commit();
-      return ev;
+      return copy(ev);
     },
     simulateNoResponseStep: async () => {
       const s = await this.ready();
@@ -532,12 +538,12 @@ class MockApi implements Api {
         this.handOff(ev, 'no_response');
       }
       await this.commit();
-      return ev;
+      return copy(ev);
     },
     reset: async () => {
-      const scenario = this.store.scenario;
-      const family = this.store.family;
-      this.store = { ...initialStore(), family, scenario };
+      // 오늘 복약 건만 다시 만든다. 가족·약통·일정·설정은 유지
+      this.store.eventsDate = '';
+      this.rollDay();
       await this.commit();
     },
   };
@@ -548,6 +554,11 @@ function isFutureCell(s: Store, cellId: string, targetCellId: string) {
   const target = s.schedule.find((x) => x.cell_id === targetCellId);
   if (!slot || !target) return false;
   return minutesOfWeek(slot.weekday, slot.dose_time) > minutesOfWeek(target.weekday, target.dose_time);
+}
+
+/** 화면이 내부 객체를 공유하지 않도록 복사해서 돌려준다 (실제 서버 응답과 같은 성질) */
+function copy<T>(v: T): T {
+  return v === null || v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T);
 }
 
 function delay(ms: number) {
