@@ -1,13 +1,14 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { api, isApiError, type DoseEvent, type MockScenario } from '@/api';
-import { SCENARIO_LABELS } from '@/components/MockBanner';
+import { onPendingScenario, pendingScenario, SCENARIO_LABELS, setPendingScenario } from '@/lib/devScenario';
 import { goBackOr } from '@/lib/nav';
 import { useRole } from '@/lib/role';
 import { TIME_OF_DAY_LABELS } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
+import { useMe } from '@/lib/useMe';
 import { colors } from '@/theme';
 
 /**
@@ -17,13 +18,23 @@ import { colors } from '@/theme';
 export default function DevPanel() {
   const { role, setRole } = useRole();
   const dev = api.dev;
-  const [scenario, setScenario] = useState<MockScenario | undefined>(dev?.getScenario());
+  const [scenario, setScenario] = useState<MockScenario | null>(pendingScenario());
   const [msg, setMsg] = useState('');
   const { data: today } = useApiData(() => api.today().catch(() => null));
+  const { data: me } = useMe();
+  useEffect(() => onPendingScenario(() => setScenario(pendingScenario())), []);
 
-  const pick = (s: MockScenario) => {
-    dev?.setScenario(s);
-    setScenario(s);
+  // 3.28 은 데모 가족 + DEMO_MODE + mock 판독기일 때만 된다. 아니면 숨긴다
+  const canPickScenario = api.mode === 'mock' || (!!me && me.family.is_demo && me.server.demo_mode && me.server.reader_is_mock);
+
+  const pick = async (s: MockScenario | null) => {
+    try {
+      await api.setMockScenario(s);
+      setPendingScenario(s);
+      setMsg(s ? `다음 사진 1장을 "${SCENARIO_LABELS[s]}"(으)로 판독해요 (모의).` : '시나리오를 지웠어요.');
+    } catch (e) {
+      setMsg(isApiError(e, 'not_found') ? '모의 판독 시나리오를 쓸 수 없는 서버예요.' : '시나리오를 정하지 못했어요.');
+    }
   };
 
   // 3.27: 오늘 그 칸의 건이 아직 scheduled 이면 지금 시각으로 앞당긴다
@@ -45,9 +56,10 @@ export default function DevPanel() {
     <ScrollView contentContainerStyle={styles.root}>
       <Text style={styles.h}>{dev ? '개발 도구 (모의 서버)' : '시연 도구'}</Text>
 
-      {dev ? (
+      {canPickScenario ? (
         <>
-          <Text style={styles.label}>다음 판독 결과 (모의 판독)</Text>
+          <Text style={styles.label}>모의 판독 시나리오 (다음 사진 1장)</Text>
+          <Text style={styles.note}>실제 AI 판독이 아니에요. 다음에 올리는 복약 사진 1장의 판독 결과만 정해요. 재촬영·안내·인계는 서버 규칙대로 진행돼요.</Text>
           <View style={styles.wrap}>
             {(Object.keys(SCENARIO_LABELS) as MockScenario[]).map((s) => (
               <Pressable
@@ -63,6 +75,11 @@ export default function DevPanel() {
                 </Text>
               </Pressable>
             ))}
+            {scenario ? (
+              <Pressable onPress={() => pick(null)} style={styles.chip} accessibilityRole="button">
+                <Text style={styles.chipText}>지우기</Text>
+              </Pressable>
+            ) : null}
           </View>
         </>
       ) : null}
@@ -131,4 +148,5 @@ const styles = StyleSheet.create({
   btn: { borderWidth: 2, borderColor: colors.border, borderRadius: 10, minHeight: 56, justifyContent: 'center', paddingHorizontal: 14 },
   btnText: { fontSize: 18, color: colors.text, fontWeight: '600' },
   msg: { fontSize: 18, color: colors.attention },
+  note: { fontSize: 16, color: colors.subtle, lineHeight: 22 },
 });

@@ -7,7 +7,7 @@ import { SimulationTag } from '@/components/MockBanner';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { TIME_OF_DAY_LABELS } from '@/lib/time';
-import { useApiData } from '@/lib/useApiData';
+import { POLL_MS, useApiData } from '@/lib/useApiData';
 import { useMe } from '@/lib/useMe';
 
 const OPEN_STATES = ['scheduled', 'asked', 'retake_requested', 'reminded'];
@@ -16,7 +16,8 @@ const OPEN_STATES = ['scheduled', 'asked', 'retake_requested', 'reminded'];
 export default function Ask() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: me } = useMe();
-  const { data: today } = useApiData(() => api.today());
+  // 무응답 인계는 서버 예약 작업이 최대 1분 늦게 반영한다 → 주기적으로 다시 읽어서 홈으로 돌아간다
+  const { data: today } = useApiData(() => api.today(), [], { pollMs: POLL_MS });
   const ev = today?.items.find((e) => e.id === id);
 
   // 서버가 인계했거나(무응답) 이미 끝난 건이면 홈으로

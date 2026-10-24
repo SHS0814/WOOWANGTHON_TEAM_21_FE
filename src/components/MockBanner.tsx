@@ -3,16 +3,10 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { api, type MockScenario } from '@/api';
+import { api } from '@/api';
+import { onPendingScenario, pendingScenario, SCENARIO_LABELS } from '@/lib/devScenario';
 import { useRole } from '@/lib/role';
 import { colors } from '@/theme';
-
-export const SCENARIO_LABELS: Record<MockScenario, string> = {
-  normal: '정상',
-  unclear: '애매',
-  unchanged: '칸 그대로',
-  double_suspected: '이중 의심',
-};
 
 interface ServerFlags {
   readerIsMock: boolean;
@@ -40,12 +34,12 @@ export function MockBanner() {
   const { role } = useRole();
   const mockServer = api.mode === 'mock';
   const [flags, setFlags] = useState<ServerFlags>({ readerIsMock: mockServer, demo: mockServer });
-  const [scenario, setScenario] = useState(api.dev?.getScenario());
+  const [scenario, setScenario] = useState(pendingScenario());
+  useEffect(() => onPendingScenario(() => setScenario(pendingScenario())), []);
 
   useEffect(() => {
     let alive = true;
     const refresh = () => {
-      setScenario(api.dev?.getScenario());
       void loadFlags().then((f) => alive && setFlags(mockServer ? { readerIsMock: true, demo: true } : f));
     };
     refresh();
@@ -64,7 +58,7 @@ export function MockBanner() {
       <Text style={styles.text}>
         {flags.readerIsMock ? '모의 판독 (실제 AI 아님)' : '시연 모드'}
         {mockServer ? ' · 모의 서버' : ''}
-        {scenario ? ` · ${SCENARIO_LABELS[scenario]}` : ''}
+        {scenario ? ` · 다음 사진: ${SCENARIO_LABELS[scenario]}` : ''}
       </Text>
       {showDev ? (
         <Pressable accessibilityRole="button" accessibilityLabel="개발 도구 열기" onPress={() => router.push('/dev')} style={styles.devBtn} hitSlop={8}>

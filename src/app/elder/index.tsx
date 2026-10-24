@@ -6,7 +6,7 @@ import { BigButton } from '@/components/BigButton';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { longDate, spokenTime, TIME_OF_DAY_LABELS, weekdayLong } from '@/lib/time';
-import { useApiData } from '@/lib/useApiData';
+import { POLL_MS, useApiData } from '@/lib/useApiData';
 import { useMe } from '@/lib/useMe';
 import { colors } from '@/theme';
 
@@ -15,7 +15,7 @@ export default function ElderHome() {
   const { data: hasToken } = useApiData(() => api.hasToken());
   const { data: me } = useMe();
   // 동의 전에는 today 가 403 consent_required 라서 결과를 무시한다
-  const { data: today } = useApiData(() => api.today().catch(() => null));
+  const { data: today } = useApiData(() => api.today().catch(() => null), [], { pollMs: POLL_MS });
 
   if (hasToken === undefined) return null;
   if (!hasToken) return <Redirect href="/elder/connect" />;

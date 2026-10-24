@@ -5,6 +5,7 @@ import { ActivityIndicator } from 'react-native';
 import { api, isApiError, type UploadResultKind } from '@/api';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
+import { setPendingScenario } from '@/lib/devScenario';
 import { uuid } from '@/lib/uuid';
 import { colors } from '@/theme';
 
@@ -40,6 +41,8 @@ export default function Reading() {
     const send = async (tries: number): Promise<void> => {
       try {
         const res = await api.uploadDosePhoto(id, photo, uploadId.current);
+        // 3.28 시나리오는 사진 1장에 쓰이고 사라진다
+        setPendingScenario(null);
         router.replace({
           pathname: '/elder/result/[id]',
           params: {

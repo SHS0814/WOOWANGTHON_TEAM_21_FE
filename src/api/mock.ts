@@ -4,7 +4,7 @@
 // 칸 위치(bbox)는 모의 판독에서 알 수 없으므로 항상 null 이다 → G5 는 격자 그림으로 강조한다.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { Api, MockDevTools, MockScenario } from './client';
+import type { Api, MockDevTools } from './client';
 import { ApiError } from './errors';
 import { MOCK_SEED } from './mockSeed';
 import type {
@@ -23,6 +23,7 @@ import type {
   Layout,
   LocalPhoto,
   Me,
+  MockScenario,
   PairRequest,
   PersonRef,
   Photo,
@@ -87,7 +88,8 @@ interface Store {
   handoffs: StoredHandoff[];
   uploads: Record<string, UploadResponse>;
   mismatch: PillboxCurrent['pillbox_mismatch'];
-  scenario: MockScenario;
+  /** 3.28: 다음 복약 사진 1장의 판독 결과. 쓰고 나면 지운다. 없으면 정상 */
+  nextScenario: MockScenario | null;
   seq: number;
 }
 
@@ -108,7 +110,7 @@ function initialStore(): Store {
     handoffs: [],
     uploads: {},
     mismatch: { detected: false, cell_ids: [], reading_id: null, detected_at: null },
-    scenario: 'normal',
+    nextScenario: null,
     seq: 1,
   };
 }
@@ -393,7 +395,7 @@ class MockApi implements Api {
   /** 기준선 판독. 시나리오가 "애매"이면 한 칸을 애매하게 돌려서 기준선 확인 화면을 볼 수 있게 한다 */
   private makeRefill(photo: LocalPhoto | null, source: Refill['source']): Refill {
     const layout = this.s.pillbox!.layout;
-    const unclearOne = this.s.scenario === 'unclear';
+    const unclearOne = this.s.nextScenario === 'unclear';
     const cells: CellResult[] = layout.cells.map((c, i) => ({
       cell_id: c.id,
       ai_state: unclearOne && i === 0 ? 'unclear' : 'full',
@@ -621,7 +623,8 @@ class MockApi implements Api {
     const target = ev.slot.cell_id;
     const order = [...expected.keys()];
     const nextCell = order[order.indexOf(target) + 1];
-    const sc = this.s.scenario;
+    const sc = this.s.nextScenario ?? 'normal';
+    this.s.nextScenario = null;
     const cells: CellResult[] = order.map((cellId) => {
       const exp = expected.get(cellId)!;
       let ai: CellState = exp === 'ignored' ? 'full' : exp;
@@ -883,14 +886,16 @@ class MockApi implements Api {
     return this.view(ev);
   }
 
+  async setMockScenario(scenario: MockScenario | null) {
+    await this.auth();
+    this.s.nextScenario = scenario;
+    await this.commit();
+    return { scenario, applies_to: 'next_dose_photo' as const, is_mock: true };
+  }
+
   // ---- 개발용 ----
 
   readonly dev: MockDevTools = {
-    getScenario: () => this.s.scenario,
-    setScenario: (scenario) => {
-      this.s.scenario = scenario;
-      void this.commit();
-    },
     setActingRole: (role) => {
       this.role = role;
       this.listeners.forEach((l) => l());

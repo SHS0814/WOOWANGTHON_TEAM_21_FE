@@ -18,6 +18,8 @@ import type {
   Layout,
   LocalPhoto,
   Me,
+  MockScenario,
+  MockScenarioResponse,
   PairingCode,
   PairRequest,
   PairResponse,
@@ -256,6 +258,10 @@ class HttpApi implements Api {
 
   simulateDose(slotId: string) {
     return this.request<DoseEvent>('/dev/dose-events', { method: 'POST', body: { slot_id: slotId } });
+  }
+
+  setMockScenario(scenario: MockScenario | null) {
+    return this.request<MockScenarioResponse>('/dev/mock-scenario', { method: 'POST', body: { scenario } });
   }
 }
 

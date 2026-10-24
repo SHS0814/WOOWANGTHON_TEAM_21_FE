@@ -20,6 +20,6 @@ export const api: Api = create();
 /** G1 가족 만들기에서 is_demo=true 로 만들지 (3.2). 서버가 DEMO_MODE 일 때만 받아 준다 */
 export const CREATE_DEMO_FAMILY = process.env.EXPO_PUBLIC_CREATE_DEMO_FAMILY === 'true';
 
-export type { Api, MockScenario } from './client';
+export type { Api } from './client';
 export { ApiError, guardianMessage, isApiError } from './errors';
 export * from './types';

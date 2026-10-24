@@ -315,6 +315,15 @@ export interface Settings {
   unchanged_mode: UnchangedMode;
 }
 
+/** 3.28 QA용 모의 판독 시나리오. 다음 복약 사진 1장에만 적용된다 */
+export type MockScenario = 'normal' | 'unclear' | 'unchanged' | 'double_suspected';
+
+export interface MockScenarioResponse {
+  scenario: MockScenario | null;
+  applies_to: 'next_dose_photo';
+  is_mock: boolean;
+}
+
 /** 앱이 찍은 사진 (업로드 전). uri 가 null 이면 모의 구현에서만 쓰는 "사진 없음" */
 export interface LocalPhoto {
   uri: string | null;

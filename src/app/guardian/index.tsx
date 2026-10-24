@@ -8,7 +8,7 @@ import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { reasonTitle } from '@/lib/handoff';
 import { dateKey, spokenTime, TIME_OF_DAY_LABELS } from '@/lib/time';
-import { useApiData } from '@/lib/useApiData';
+import { POLL_MS, useApiData } from '@/lib/useApiData';
 import { useMe } from '@/lib/useMe';
 import { colors } from '@/theme';
 
@@ -16,9 +16,10 @@ import { colors } from '@/theme';
 export default function GuardianHome() {
   const { data: hasToken } = useApiData(() => api.hasToken());
   const { data: me } = useMe();
+  // 인계는 다른 기기(어르신 폰)나 서버 예약 작업(최대 1분 지연)에서 생기므로 주기적으로 다시 읽는다.
   // 아래 셋은 서버가 아직 구현 중이거나 약통이 없으면 실패할 수 있다 → 실패하면 그 줄만 숨긴다
-  const { data: open } = useApiData(() => api.handoffs('open').catch(() => null));
-  const { data: day } = useApiData(() => api.summaries('day', dateKey(new Date()), dateKey(new Date())).catch(() => null));
+  const { data: open } = useApiData(() => api.handoffs('open').catch(() => null), [], { pollMs: POLL_MS });
+  const { data: day } = useApiData(() => api.summaries('day', dateKey(new Date()), dateKey(new Date())).catch(() => null), [], { pollMs: POLL_MS });
   const { data: box } = useApiData(() => api.currentPillbox().catch(() => null));
 
   if (hasToken === undefined) return null;

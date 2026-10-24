@@ -13,6 +13,8 @@ import type {
   Layout,
   LocalPhoto,
   Me,
+  MockScenario,
+  MockScenarioResponse,
   PairingCode,
   PairRequest,
   PairResponse,
@@ -29,13 +31,8 @@ import type {
   Verdict,
 } from './types';
 
-/** 모의 구현의 다음 판독 결과 (개발용 스위치) */
-export type MockScenario = 'normal' | 'unclear' | 'unchanged' | 'double_suspected';
-
 /** 모의 구현에서만 있는 개발 도구. http 구현에서는 undefined */
 export interface MockDevTools {
-  getScenario(): MockScenario;
-  setScenario(s: MockScenario): void;
   /** 한 기기에서 두 역할을 확인하려고, 모의 서버가 지금 어느 역할로 응답할지 정한다 */
   setActingRole(role: 'elder' | 'guardian' | null): void;
   /** 열린 복약 건의 시간을 한 단계 흘려보낸다 (재질문 → 무응답 인계, 재촬영 대기 → 인계) */
@@ -84,6 +81,8 @@ export interface Api {
   /** 3.26 */ settings(): Promise<Settings>;
   /** 3.26 */ putSettings(patch: Partial<Settings>): Promise<Settings>;
   /** 3.27 시연 트리거. 데모 가족이 아니면 ApiError(404, not_found) */ simulateDose(slotId: string): Promise<DoseEvent>;
+  /** 3.28 다음 복약 사진 1장의 모의 판독 결과. 데모 가족·mock 판독기가 아니면 ApiError(404, not_found) */
+  setMockScenario(scenario: MockScenario | null): Promise<MockScenarioResponse>;
 
   readonly dev?: MockDevTools;
 }
