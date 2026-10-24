@@ -14,3 +14,9 @@ web-build/
 .DS_Store
 android/
 ios/
+expo-env.d.ts
+.kotlin/
+.metro-health-check*
+npm-debug.*
+*.pem
+*.tsbuildinfo
