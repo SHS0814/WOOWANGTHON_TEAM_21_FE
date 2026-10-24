@@ -1,93 +1,139 @@
-// 모의 구현. 실제 서버·AI 없이 화면 흐름을 확인하기 위한 것이다.
+// 모의 서버. 실제 서버·AI 없이 화면 흐름을 확인하기 위한 것이다.
+// 응답 모양은 api.md 를 따르고, 상태 전이는 backend.md 5·6·7장, R-006, R-007 C3, R-009, R-010 을 흉내 낸다.
 // 판독 결과는 개발용 시나리오 스위치로 정해진다 → 모든 Reading 은 is_mock = true (헌장 6장).
-// 상태 전이 규칙은 backend.md 6·7장, R-006, R-007 C3, R-009 를 따른다. 실제로는 서버가 정한다.
+// 칸 위치(bbox)는 모의 판독에서 알 수 없으므로 항상 null 이다 → G5 는 격자 그림으로 강조한다.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { Api, DevTools, MockScenario, PairingCode } from './client';
-import type {
-  CellReading,
-  DaySummary,
-  DoseEvent,
-  Family,
-  Handoff,
-  HandoffReason,
-  Pillbox,
-  PillboxLayout,
-  RefillStatus,
-  ScheduleSlot,
-  ServerConfig,
-  Settings,
-  TimeOfDay,
-  UploadResult,
-} from './types';
+import type { Api, MockDevTools, MockScenario } from './client';
+import { ApiError } from './errors';
 import { MOCK_SEED } from './mockSeed';
-import { mondayIndex } from '../lib/time';
+import type {
+  Attention,
+  CellResult,
+  CellState,
+  Classification,
+  ConsentRequest,
+  CreateFamilyRequest,
+  Device,
+  DoseEvent,
+  ExpectedState,
+  Handoff,
+  HandoffListItem,
+  HandoffReason,
+  Layout,
+  LocalPhoto,
+  Me,
+  PairRequest,
+  PersonRef,
+  Photo,
+  Pillbox,
+  PillboxCurrent,
+  Reading,
+  Refill,
+  Role,
+  Settings,
+  Slot,
+  SlotInput,
+  Summary,
+  TimeOfDay,
+  TodayResponse,
+  UploadResponse,
+  Verdict,
+} from './types';
 
-const STORAGE_KEY = 'woowang.mock-store.v1';
-const MOCK_PROVIDER = 'mock';
-const MOCK_MODEL = 'mock-reader';
+const STORAGE_KEY = 'woowang.mock-store.v2';
+const MOCK_MODEL = 'mock-v1';
+const READ_DELAY_MS = 1800;
+/** 복약 시각 60분 전부터 사진을 받는다 (3.18, R-010 13번) */
+const EARLY_PHOTO_MIN = 60;
+
+// R-006 확정값. 실제로는 서버의 GET /me server.timing 에서 내려온다 (R-007 C5)
+const TIMING = { reask_offsets_min: [10, 20], no_response_handoff_min: 30, retake_wait_min: 15 };
+
+// backend.md 7.2
+const ALLOWED_VERDICTS: Record<HandoffReason, Verdict[]> = {
+  no_response: ['taken', 'not_taken', 'acknowledged'],
+  unclear: ['taken', 'not_taken'],
+  unchanged: ['taken', 'not_taken', 'acknowledged'],
+  double_suspected: ['taken', 'not_taken', 'acknowledged'],
+  refill_unconfirmed: ['refilled', 'not_refilled'],
+  refill_overdue: ['taken', 'not_taken', 'acknowledged'],
+};
+
+interface StoredHandoff {
+  id: string;
+  event_id: string;
+  reason: HandoffReason;
+  notified_at: string;
+  verdict: Verdict | null;
+  verdict_by: PersonRef | null;
+  verdict_at: string | null;
+  late_photo: boolean;
+}
 
 interface Store {
-  family: Family | null;
-  pillbox: Pillbox;
-  schedule: ScheduleSlot[];
-  settings: Settings;
-  refills: { at: string; photo_uri: string | null }[];
+  family: { id: string; elder_display_name: string; is_demo: boolean } | null;
+  guardian: Device | null;
+  elder: Device | null;
+  pairingCodes: { code: string; short_code: string; expires_at: string }[];
+  pillbox: Pillbox | null;
+  slots: Slot[];
+  scheduleUpdatedAt: string | null;
+  settings: Omit<Settings, 'elder_display_name'>;
+  refills: Refill[];
   eventsDate: string;
   events: DoseEvent[];
+  readings: Record<string, Reading[]>;
+  handoffs: StoredHandoff[];
+  uploads: Record<string, UploadResponse>;
+  mismatch: PillboxCurrent['pillbox_mismatch'];
   scenario: MockScenario;
   seq: number;
 }
 
-// R-006 확정값. 실제로는 서버 설정에서 내려받는다 (R-007 C5)
-const CONFIG: ServerConfig = {
-  reask_offsets_min: [10, 20],
-  no_response_handoff_min: 30,
-  unchanged_retake_window_min: 15,
-  max_unclear_retakes: 1,
-  // 모델이 아직 정해지지 않았다. 외부 전송 가능성을 숨기지 않도록 모의에서는 true 로 둔다
-  photo_sent_to_external_ai: true,
-};
-
-const ROW_TIMES: TimeOfDay[] = ['morning', 'evening'];
-
-function defaultLayout(): PillboxLayout {
-  const rows = MOCK_SEED.pillbox.row_labels.length;
-  const cols = MOCK_SEED.pillbox.col_labels.length;
-  const cells = [];
-  for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) cells.push({ id: `r${r}c${c}`, row: r, col: c });
-  return { rows, cols, row_labels: [...MOCK_SEED.pillbox.row_labels], col_labels: [...MOCK_SEED.pillbox.col_labels], cells };
+function initialStore(): Store {
+  return {
+    family: null,
+    guardian: null,
+    elder: null,
+    pairingCodes: [],
+    pillbox: null,
+    slots: [],
+    scheduleUpdatedAt: null,
+    settings: { summary_push_enabled: false, summary_push_time: '21:00', photo_retention_days: 90, unchanged_mode: 'remind_then_retake' },
+    refills: [],
+    eventsDate: '',
+    events: [],
+    readings: {},
+    handoffs: [],
+    uploads: {},
+    mismatch: { detected: false, cell_ids: [], reading_id: null, detected_at: null },
+    scenario: 'normal',
+    seq: 1,
+  };
 }
 
-function timeOfDayForRow(layout: PillboxLayout, row: number): TimeOfDay {
-  const label = layout.row_labels[row] ?? '';
-  if (label.includes('아침')) return 'morning';
-  if (label.includes('점심')) return 'noon';
-  if (label.includes('저녁')) return 'evening';
-  if (label.includes('취침') || label.includes('자기')) return 'bedtime';
-  return ROW_TIMES[row] ?? 'evening';
-}
+// ---- 시간 도우미 (서울 시간 오프셋 표기, 1.3) ----
 
-/** 약통 칸과 복약 시각을 잇는다. 열 = 요일, 행 = 시간대인 배열 기준 */
-function buildSchedule(layout: PillboxLayout, times: Partial<Record<TimeOfDay, string>>): ScheduleSlot[] {
-  const slots: ScheduleSlot[] = [];
-  for (const cell of layout.cells) {
-    const tod = timeOfDayForRow(layout, cell.row);
-    slots.push({
-      id: `slot-${cell.id}`,
-      weekday: layout.cols === 7 ? cell.col : cell.col % 7,
-      time_of_day: tod,
-      dose_time: times[tod] ?? MOCK_SEED.dose_times[tod] ?? '19:00',
-      cell_id: cell.id,
-    });
-  }
-  return slots;
+function iso(d: Date): string {
+  const pad = (n: number) => `${n}`.padStart(2, '0');
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(
+    d.getSeconds(),
+  )}${sign}${pad(Math.floor(Math.abs(off) / 60))}:${pad(Math.abs(off) % 60)}`;
 }
 
 function dateKey(d: Date): string {
-  const m = `${d.getMonth() + 1}`.padStart(2, '0');
-  const day = `${d.getDate()}`.padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${day}`;
+  return iso(d).slice(0, 10);
+}
+
+function mondayIndex(d: Date): number {
+  return (d.getDay() + 6) % 7;
+}
+
+function addMin(at: string, min: number): string {
+  return iso(new Date(new Date(at).getTime() + min * 60_000));
 }
 
 function atTime(base: Date, hhmm: string): Date {
@@ -97,36 +143,42 @@ function atTime(base: Date, hhmm: string): Date {
   return d;
 }
 
-function minutesOfWeek(weekday: number, hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return weekday * 1440 + h * 60 + m;
+function weekMinutes(s: { weekday: number; dose_time: string }): number {
+  const [h, m] = s.dose_time.split(':').map(Number);
+  return s.weekday * 1440 + h * 60 + m;
 }
 
-function initialStore(): Store {
-  const layout = defaultLayout();
-  return {
-    family: null,
-    pillbox: { id: 'pillbox-1', layout, registered_photo_uri: null, confirmed_at: new Date().toISOString() },
-    schedule: buildSchedule(layout, MOCK_SEED.dose_times),
-    settings: {
-      summary_push_enabled: false,
-      summary_push_time: '21:00',
-      photo_retention_days: 90,
-      unchanged_policy: 'remind',
-    },
-    refills: [],
-    eventsDate: '',
-    events: [],
-    scenario: 'normal',
-    seq: 1,
-  };
+function delay(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** 화면이 내부 객체를 공유하지 않도록 복사해서 돌려준다 (실제 서버 응답과 같은 성질) */
+function copy<T>(v: T): T {
+  return v === null || v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T);
+}
+
+function timeOfDayFromLabel(label: string): TimeOfDay | null {
+  if (label.includes('아침')) return 'morning';
+  if (label.includes('점심')) return 'noon';
+  if (label.includes('저녁')) return 'evening';
+  if (label.includes('취침') || label.includes('자기')) return 'bedtime';
+  return null;
+}
+
+function defaultLayout(): Layout {
+  const { row_labels, col_labels } = MOCK_SEED.pillbox;
+  const cells = [];
+  for (let c = 0; c < col_labels.length; c++) for (let r = 0; r < row_labels.length; r++) cells.push({ id: `r${r}c${c}`, row: r, col: c });
+  return { rows: row_labels.length, cols: col_labels.length, row_labels: [...row_labels], col_labels: [...col_labels], cells };
 }
 
 class MockApi implements Api {
-  readonly isMock = true;
-  private store: Store = initialStore();
+  readonly mode = 'mock' as const;
+  private s: Store = initialStore();
   private loaded: Promise<void>;
   private listeners = new Set<() => void>();
+  private authListeners = new Set<() => void>();
+  private role: Role | null = null;
 
   constructor() {
     this.loaded = this.load();
@@ -135,7 +187,7 @@ class MockApi implements Api {
   private async load() {
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      if (raw) this.store = { ...initialStore(), ...(JSON.parse(raw) as Partial<Store>) };
+      if (raw) this.s = { ...initialStore(), ...(JSON.parse(raw) as Partial<Store>) };
     } catch {
       // 저장소를 못 읽으면 초기값으로 시작한다
     }
@@ -144,425 +196,733 @@ class MockApi implements Api {
   private async ready(): Promise<Store> {
     await this.loaded;
     this.rollDay();
-    return this.store;
+    return this.s;
   }
 
   private async commit() {
     this.listeners.forEach((l) => l());
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.store));
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.s));
     } catch {
       // 저장 실패는 모의 구현에서 무시한다
     }
   }
 
-  private nextId(prefix: string) {
-    return `${prefix}-${this.store.seq++}`;
+  private id(prefix: string) {
+    return `${prefix}-${this.s.seq++}`;
   }
 
-  /** 날짜가 바뀌면 오늘 일정으로 복약 건을 새로 만든다 (backend.md 9장 create_dose_events) */
-  private rollDay() {
-    const today = new Date();
-    const key = dateKey(today);
-    if (this.store.eventsDate === key) return;
-    const wd = mondayIndex(today);
-    this.store.eventsDate = key;
-    this.store.events = this.store.schedule
-      .filter((s) => s.weekday === wd)
-      .sort((a, b) => a.dose_time.localeCompare(b.dose_time))
-      .map((s) => ({
-        id: this.nextId('dose'),
-        slot_id: s.id,
-        time_of_day: s.time_of_day,
-        cell_id: s.cell_id,
-        scheduled_at: atTime(today, s.dose_time).toISOString(),
-        state: 'scheduled',
-        outcome: null,
-        resolved_at: null,
-        reminded_at: null,
-        reask_count: 0,
-        photos: [],
-        readings: [],
-        handoff: null,
-        simulated: false,
-      }));
+  subscribe(l: () => void) {
+    this.listeners.add(l);
+    return () => void this.listeners.delete(l);
   }
 
-  subscribe(listener: () => void) {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+  onAuthLost(l: () => void) {
+    this.authListeners.add(l);
+    return () => void this.authListeners.delete(l);
   }
 
-  async getConfig() {
-    return CONFIG;
+  // ---- 인증 흉내: 지금 역할의 기기가 있으면 토큰이 있는 것으로 본다 ----
+
+  private myDevice(): Device | null {
+    return this.role === 'elder' ? this.s.elder : this.role === 'guardian' ? this.s.guardian : null;
   }
 
-  // ---- 가족·짝짓기 ----
-
-  async getFamily() {
-    return copy((await this.ready()).family);
-  }
-
-  async createFamily(input: { elder_display_name: string; guardian_display_name: string }) {
+  private async auth(role?: Role): Promise<{ s: Store; me: Device }> {
     const s = await this.ready();
-    s.family = { id: 'family-1', ...input, consent_at: null };
-    await this.commit();
-    return copy(s.family);
+    const me = this.myDevice();
+    if (!me || !s.family) throw new ApiError(401, 'unauthorized', '모의: 이 역할의 기기가 없음');
+    if (role && me.role !== role) throw new ApiError(403, 'forbidden_role', '모의: 역할이 맞지 않음');
+    if (me.role === 'elder' && !me.consent_at) throw new ApiError(403, 'consent_required', '모의: 동의 전');
+    return { s, me };
   }
 
-  async createPairingCode(): Promise<PairingCode> {
-    // 모의 코드. 실제로는 서버가 128비트 난수와 6자리 숫자를 발급한다 (backend.md 3.2)
+  async hasToken() {
+    await this.ready();
+    return !!this.myDevice();
+  }
+
+  async forgetToken() {
+    if (this.role === 'elder') this.s.elder = null;
+    if (this.role === 'guardian') this.s.guardian = null;
+    await this.commit();
+  }
+
+  private guardians(): PersonRef[] {
+    return this.s.guardian ? [{ device_id: this.s.guardian.id, display_name: this.s.guardian.display_name }] : [];
+  }
+
+  private newDevice(role: Role, name: string): Device {
+    return { id: this.id(`d-${role}`), role, display_name: name, platform: null, paired_at: iso(new Date()), consent_at: null, last_seen_at: null, is_me: true };
+  }
+
+  // ---- 3.1 ~ 3.9 ----
+
+  async health() {
+    return { status: 'ok' as const, version: 'mock', time: iso(new Date()), reader: { layout: 'mock', cells: 'mock', is_mock: true } };
+  }
+
+  async createFamily(req: CreateFamilyRequest) {
+    const s = await this.ready();
+    s.family = { id: this.id('family'), elder_display_name: req.elder_display_name, is_demo: true };
+    s.guardian = this.newDevice('guardian', req.guardian_display_name);
+    await this.commit();
+    return { family_id: s.family.id, token: 'mock-token', device: copy(s.guardian) };
+  }
+
+  async createPairingCode(kind: 'elder' | 'guardian') {
+    const { s } = await this.auth('guardian');
     const short = `${Math.floor(100000 + Math.random() * 900000)}`;
+    const code = `mock${short}`;
+    const expires_at = addMin(iso(new Date()), kind === 'elder' ? 10 : 24 * 60);
+    s.pairingCodes = [{ code, short_code: short, expires_at }];
+    await this.commit();
+    return { kind, code, short_code: kind === 'elder' ? short : null, expires_at, qr_payload: `woowang://pair?code=${code}` };
+  }
+
+  async pair(req: PairRequest) {
+    const s = await this.ready();
+    const given = 'code' in req ? req.code : req.short_code;
+    const ok = given === 'mock' || s.pairingCodes.some((c) => c.code === given || c.short_code === given);
+    if (!ok) throw new ApiError(400, 'code_invalid', '모의: 없는 코드');
+    // 같은 기기에서 보호자 흐름을 거치지 않았으면 모의 가족(약통·일정 포함)으로 연결한다
+    if (!s.family) this.seedFamily();
+    s.pairingCodes = [];
+    s.elder = this.newDevice('elder', s.family!.elder_display_name);
+    await this.commit();
     return {
-      qr: `woowang-mock-pair:${short}`,
-      short_code: short,
-      expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      token: 'mock-token',
+      device: copy(s.elder),
+      family: { id: s.family!.id, elder_display_name: s.family!.elder_display_name, guardians: this.guardians() },
+      consent_required: true,
     };
   }
 
-  async pair(_code: string) {
+  private seedFamily() {
+    const s = this.s;
+    s.family = { id: this.id('family'), elder_display_name: MOCK_SEED.family.elder_display_name, is_demo: true };
+    s.guardian = { ...this.newDevice('guardian', MOCK_SEED.family.guardian_display_name), is_me: false };
+    const layout = defaultLayout();
+    s.pillbox = { id: this.id('pb'), layout, registered_photo_id: '', confirmed_at: iso(new Date()), active: true };
+    s.slots = layout.cells.map((c) => {
+      const tod = timeOfDayFromLabel(layout.row_labels[c.row]) ?? 'evening';
+      return { id: this.id('s'), weekday: c.col, time_of_day: tod, dose_time: MOCK_SEED.dose_times[tod], cell_id: c.id };
+    });
+    s.refills = [this.makeRefill(null, 'registration')];
+    s.eventsDate = '';
+  }
+
+  async consent(req: ConsentRequest) {
+    await this.ready();
+    const me = this.myDevice();
+    if (!me || me.role !== 'elder') throw new ApiError(403, 'forbidden_role', '모의');
+    if (!req.ai_external_transfer_shown && this.serverInfo().ai_external_transfer) throw new ApiError(422, 'consent_incomplete', '모의');
+    me.consent_at = iso(new Date());
+    await this.commit();
+    return { consent_at: me.consent_at };
+  }
+
+  private serverInfo(): Me['server'] {
+    return {
+      timezone: 'Asia/Seoul',
+      timing: TIMING,
+      reader_is_mock: true,
+      // 모델이 아직 정해지지 않았다. 외부 전송 가능성을 숨기지 않도록 모의에서는 true 로 둔다
+      ai_external_transfer: true,
+      consent_text_version: 'v1',
+      demo_mode: true,
+    };
+  }
+
+  async me(): Promise<Me> {
     const s = await this.ready();
-    // 같은 기기에서 보호자 흐름을 거치지 않았으면 모의 가족으로 연결한다
-    if (!s.family) s.family = { id: 'family-1', ...MOCK_SEED.family, consent_at: null };
+    const me = this.myDevice();
+    if (!me || !s.family) throw new ApiError(401, 'unauthorized', '모의');
+    return copy({
+      device: me,
+      consent_required: me.role === 'elder' && !me.consent_at,
+      family: {
+        id: s.family.id,
+        elder_display_name: s.family.elder_display_name,
+        guardians: this.guardians(),
+        has_pillbox: !!s.pillbox,
+        has_schedule: s.slots.length > 0,
+        is_demo: s.family.is_demo,
+      },
+      server: this.serverInfo(),
+    });
+  }
+
+  async devices() {
+    const { s, me } = await this.auth('guardian');
+    return copy([s.guardian, s.elder].filter((d): d is Device => !!d).map((d) => ({ ...d, is_me: d.id === me.id })));
+  }
+
+  async deleteDevice(id: string) {
+    const { s } = await this.auth('guardian');
+    if (s.elder?.id === id) s.elder = null;
+    else if (s.guardian?.id === id) throw new ApiError(409, 'last_guardian', '모의: 마지막 보호자');
+    else throw new ApiError(404, 'not_found', '모의');
     await this.commit();
-    return copy(s.family);
   }
 
-  async consent() {
-    const s = await this.ready();
-    if (s.family) s.family.consent_at = new Date().toISOString();
-    await this.commit();
+  async putPushToken() {
+    // 모의 구현은 푸시를 보내지 않는다
   }
 
-  async unpair() {
-    this.store = initialStore();
-    await this.commit();
+  // ---- 3.10 ~ 3.16 약통·일정·리필 ----
+
+  private photoOf(local: LocalPhoto | null): Photo {
+    // 모의 사진 URL 은 기기 안의 파일 경로다. 카메라가 없으면 빈 문자열 → 화면은 "사진 없음"
+    return { id: this.id('p'), taken_at: local?.taken_at ?? iso(new Date()), url: local?.uri ?? '', url_expires_at: addMin(iso(new Date()), 60 * 24 * 365) };
   }
 
-  async updateNames(input: { elder_display_name?: string; guardian_display_name?: string }) {
-    const s = await this.ready();
-    if (!s.family) s.family = { id: 'family-1', ...MOCK_SEED.family, consent_at: null };
-    Object.assign(s.family, input);
-    await this.commit();
-    return copy(s.family);
-  }
-
-  // ---- 약통·일정 ----
-
-  async getPillbox() {
-    return copy((await this.ready()).pillbox);
-  }
-
-  async detectPillbox(_photoUri: string | null) {
+  async detectPillbox(photo: LocalPhoto) {
+    await this.auth('guardian');
     await delay(1200);
-    // 모의 구조 제안. 실제로는 AI가 사진에서 칸 배열을 추정한다
-    return { layout: defaultLayout(), is_mock: true };
+    const layout = defaultLayout();
+    return {
+      photo: this.photoOf(photo),
+      proposal: { layout, suggested_time_of_day: layout.row_labels.map(timeOfDayFromLabel), uncertain: false },
+      is_mock: true,
+      provider: 'mock',
+      model: MOCK_MODEL,
+    };
   }
 
-  async savePillbox(layout: PillboxLayout, photoUri: string | null) {
-    const s = await this.ready();
-    const times: Partial<Record<TimeOfDay, string>> = {};
-    for (const slot of s.schedule) times[slot.time_of_day] = slot.dose_time;
-    s.pillbox = { id: this.nextId('pillbox'), layout, registered_photo_uri: photoUri, confirmed_at: new Date().toISOString() };
-    s.schedule = buildSchedule(layout, times);
-    // 등록 사진은 채운 약통 사진이라 리필 기준선이 된다 (R-008 C3)
-    s.refills.push({ at: new Date().toISOString(), photo_uri: photoUri });
+  /** 기준선 판독. 시나리오가 "애매"이면 한 칸을 애매하게 돌려서 기준선 확인 화면을 볼 수 있게 한다 */
+  private makeRefill(photo: LocalPhoto | null, source: Refill['source']): Refill {
+    const layout = this.s.pillbox!.layout;
+    const unclearOne = this.s.scenario === 'unclear';
+    const cells: CellResult[] = layout.cells.map((c, i) => ({
+      cell_id: c.id,
+      ai_state: unclearOne && i === 0 ? 'unclear' : 'full',
+      expected: null,
+      attention: unclearOne && i === 0 ? 'unclear' : null,
+      bbox: null,
+    }));
+    const p = this.photoOf(photo);
+    return {
+      id: this.id('rf'),
+      pillbox_id: this.s.pillbox!.id,
+      filled_at: iso(new Date()),
+      filled_by: this.guardians()[0] ?? null,
+      source,
+      baseline_reading: { id: this.id('rd'), photo: p, is_mock: true, provider: 'mock', model: MOCK_MODEL, created_at: iso(new Date()), target_cell_id: null, classification: null, cells },
+      baseline_cells: cells.map((c) => ({ cell_id: c.cell_id, state: 'full', edited: false })),
+      needs_review: unclearOne,
+    };
+  }
+
+  async createPillbox(req: { photo_id: string; layout: Layout }) {
+    const { s } = await this.auth('guardian');
+    await delay(800);
+    s.pillbox = { id: this.id('pb'), layout: req.layout, registered_photo_id: req.photo_id, confirmed_at: iso(new Date()), active: true };
+    // 3.11: 새 약통을 확정하면 기존 일정은 지워진다
+    s.slots = [];
+    s.scheduleUpdatedAt = iso(new Date());
+    const refill = this.makeRefill(null, 'registration');
+    s.refills.push(refill);
+    s.mismatch = { detected: false, cell_ids: [], reading_id: null, detected_at: null };
     s.eventsDate = '';
     this.rollDay();
     await this.commit();
-    return copy(s.pillbox);
+    return copy({ pillbox: s.pillbox, refill });
   }
 
-  async getSchedule() {
-    return copy((await this.ready()).schedule);
-  }
-
-  async saveDoseTimes(times: Partial<Record<TimeOfDay, string>>) {
-    const s = await this.ready();
-    s.schedule = s.schedule.map((slot) => (times[slot.time_of_day] ? { ...slot, dose_time: times[slot.time_of_day]! } : slot));
-    // 아직 시작하지 않은 오늘 복약 건의 시각도 맞춘다
-    const today = new Date();
-    for (const ev of s.events) {
-      const t = times[ev.time_of_day];
-      if (t && ev.state === 'scheduled') ev.scheduled_at = atTime(today, t).toISOString();
-    }
-    await this.commit();
-    return copy(s.schedule);
-  }
-
-  // ---- 복약 건 ----
-
-  async getToday() {
-    return copy((await this.ready()).events);
-  }
-
-  async getEvent(id: string) {
-    return copy((await this.ready()).events.find((e) => e.id === id) ?? null);
-  }
-
-  private mockReading(ev: DoseEvent, scenario: MockScenario) {
-    const s = this.store;
-    const order = s.schedule
+  async currentPillbox(): Promise<PillboxCurrent> {
+    const { s } = await this.auth('guardian');
+    if (!s.pillbox) throw new ApiError(404, 'pillbox_required', '모의: 약통 없음');
+    const now = new Date();
+    const wd = mondayIndex(now);
+    const taken = new Set(s.events.filter((e) => e.outcome === 'taken').map((e) => e.slot.cell_id));
+    // 모의 계산: 주간 약통을 월요일에 채웠다고 보고, 오늘 아직 안 드신 칸과 이후 칸을 남은 칸으로 센다
+    const remaining = s.slots
       .slice()
-      .sort((a, b) => minutesOfWeek(a.weekday, a.dose_time) - minutesOfWeek(b.weekday, b.dose_time))
-      .map((slot) => slot.cell_id);
-    const t = order.indexOf(ev.cell_id);
-    const cells: CellReading[] = order.map((cellId, i) => {
-      if (i < t) return { cell_id: cellId, state: 'empty', confidence: 0.95 };
-      if (i > t) return { cell_id: cellId, state: 'full', confidence: 0.95 };
-      switch (scenario) {
-        case 'normal':
-        case 'double_suspected':
-          return { cell_id: cellId, state: 'empty', confidence: 0.96 };
-        case 'unclear':
-          return { cell_id: cellId, state: 'unclear', confidence: 0.42 };
-        case 'unchanged':
-          return { cell_id: cellId, state: 'full', confidence: 0.94 };
-      }
+      .sort((a, b) => weekMinutes(a) - weekMinutes(b))
+      .filter((slot) => slot.weekday > wd || (slot.weekday === wd && !taken.has(slot.cell_id)));
+    const last = remaining[remaining.length - 1];
+    const perDay = Math.max(0, ...[0, 1, 2, 3, 4, 5, 6].map((d) => s.slots.filter((x) => x.weekday === d).length));
+    const threshold = perDay * 2;
+    const coveredDate = last ? new Date(now.getTime() + (last.weekday - wd) * 86_400_000) : null;
+    return copy({
+      pillbox: s.pillbox,
+      last_refill: s.refills[s.refills.length - 1] ?? null,
+      refill_status: {
+        remaining_cells: remaining.length,
+        covered_until: last && coveredDate ? { date: dateKey(coveredDate), weekday: last.weekday, time_of_day: last.time_of_day, dose_time: last.dose_time } : null,
+        needs_refill: remaining.length <= threshold,
+        threshold_cells: threshold,
+      },
+      pillbox_mismatch: s.mismatch,
     });
-    if (scenario === 'double_suspected') {
-      // 기대상 차 있어야 할 다음 칸이 비어 있음
-      const j = t + 1 < order.length ? t + 1 : -1;
-      if (j >= 0) cells[j] = { cell_id: order[j], state: 'empty', confidence: 0.91 };
+  }
+
+  async schedule() {
+    const { s } = await this.auth();
+    return copy({ pillbox_id: s.pillbox?.id ?? null, slots: s.slots, updated_at: s.scheduleUpdatedAt });
+  }
+
+  async putSchedule(slots: SlotInput[]) {
+    const { s } = await this.auth('guardian');
+    if (!s.pillbox) throw new ApiError(409, 'pillbox_required', '모의');
+    const cellIds = new Set(s.pillbox.layout.cells.map((c) => c.id));
+    const seen = new Set<string>();
+    for (const x of slots) {
+      const key = `${x.weekday}-${x.time_of_day}`;
+      if (!cellIds.has(x.cell_id) || seen.has(x.cell_id) || seen.has(key)) throw new ApiError(422, 'validation_error', '모의: 칸 중복 또는 없는 칸');
+      seen.add(x.cell_id);
+      seen.add(key);
     }
-    const flagged = cells
-      .filter((c) => c.state === 'unclear' || (c.state === 'empty' && order.indexOf(c.cell_id) > t))
-      .map((c) => c.cell_id);
+    s.slots = slots.map((x) => ({ ...x, id: this.id('s') }));
+    s.scheduleUpdatedAt = iso(new Date());
+    // 3.14: 오늘 남은 scheduled 건은 새 일정으로 다시 만든다. 이미 물어본 건은 그대로 둔다
+    const started = s.events.filter((e) => e.state !== 'scheduled');
+    s.events = started;
+    this.addTodayEvents(new Set(started.map((e) => e.slot.cell_id)));
+    await this.commit();
+    return this.schedule();
+  }
+
+  async createRefill(photo: LocalPhoto) {
+    const { s } = await this.auth('guardian');
+    if (!s.pillbox) throw new ApiError(409, 'pillbox_required', '모의');
+    await delay(1200);
+    const refill = this.makeRefill(photo, 'guardian_photo');
+    s.refills.push(refill);
+    s.mismatch = { detected: false, cell_ids: [], reading_id: null, detected_at: null };
+    await this.commit();
+    return copy(refill);
+  }
+
+  async updateBaseline(refillId: string, cells: { cell_id: string; state: 'full' | 'empty' }[]) {
+    const { s } = await this.auth('guardian');
+    const latest = s.refills[s.refills.length - 1];
+    if (!latest || latest.id !== refillId) throw new ApiError(409, 'refill_not_latest', '모의');
+    for (const c of cells) {
+      const b = latest.baseline_cells.find((x) => x.cell_id === c.cell_id);
+      if (b) Object.assign(b, { state: c.state, edited: true });
+    }
+    const flagged = latest.baseline_reading.cells.filter((c) => c.attention).map((c) => c.cell_id);
+    latest.needs_review = flagged.some((id) => !latest.baseline_cells.find((b) => b.cell_id === id)?.edited);
+    await this.commit();
+    return copy(latest);
+  }
+
+  // ---- 3.17 ~ 3.19 복약 건 ----
+
+  /** 날짜가 바뀌면 오늘 일정으로 복약 건을 새로 만든다 (backend.md 9장) */
+  private rollDay() {
+    const key = dateKey(new Date());
+    if (this.s.eventsDate === key) return;
+    this.s.eventsDate = key;
+    this.s.events = [];
+    this.s.handoffs = [];
+    this.s.readings = {};
+    this.addTodayEvents(new Set());
+  }
+
+  private addTodayEvents(skipCells: Set<string>) {
+    const today = new Date();
+    const wd = mondayIndex(today);
+    for (const slot of this.s.slots.filter((x) => x.weekday === wd && !skipCells.has(x.cell_id))) {
+      const at = iso(atTime(today, slot.dose_time));
+      this.s.events.push(
+        this.withTimes({
+          id: this.id('ev'),
+          date: dateKey(today),
+          slot: copy(slot),
+          scheduled_at: at,
+          state: 'scheduled',
+          outcome: null,
+          outcome_source: null,
+          decided_by: null,
+          taken_at: null,
+          resolved_at: null,
+          elder_status: 'upcoming',
+          ask_times: [],
+          handoff_at: at,
+          retake_deadline_at: null,
+          photos: [],
+          is_mock: false,
+          is_simulated: false,
+          latest_reading: null,
+          handoff: null,
+        }),
+      );
+    }
+    this.s.events.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+  }
+
+  private withTimes(ev: DoseEvent): DoseEvent {
+    ev.ask_times = [ev.scheduled_at, ...TIMING.reask_offsets_min.map((m) => addMin(ev.scheduled_at, m))];
+    ev.handoff_at = addMin(ev.scheduled_at, TIMING.no_response_handoff_min);
+    return ev;
+  }
+
+  private elderStatus(ev: DoseEvent): DoseEvent['elder_status'] {
+    if (ev.outcome === 'taken') return 'recorded';
+    if (ev.state === 'scheduled') return 'upcoming';
+    if (['asked', 'reading', 'retake_requested', 'reminded'].includes(ev.state)) return 'waiting';
+    return 'no_record';
+  }
+
+  /** 역할에 맞는 형태로 내보낸다 (2.5: 어르신 응답에서는 latest_reading, handoff 가 null) */
+  private view(ev: DoseEvent): DoseEvent {
+    const out = copy(ev);
+    out.elder_status = this.elderStatus(ev);
+    const h = this.s.handoffs.find((x) => x.event_id === ev.id);
+    const readings = this.s.readings[ev.id] ?? [];
+    out.latest_reading = copy(readings[readings.length - 1] ?? null);
+    out.handoff = h ? { id: h.id, reason: h.reason, notified_at: h.notified_at, verdict: h.verdict, verdict_at: h.verdict_at } : null;
+    if (this.role === 'elder') {
+      out.latest_reading = null;
+      out.handoff = null;
+    }
+    return out;
+  }
+
+  async today(): Promise<TodayResponse> {
+    const { s } = await this.auth();
+    const next = s.events.find((e) => e.state === 'scheduled' || e.state === 'asked');
     return {
-      id: this.nextId('reading'),
-      provider: MOCK_PROVIDER,
-      model: MOCK_MODEL,
-      is_mock: true,
-      cells,
-      flagged_cell_ids: flagged,
-      created_at: new Date().toISOString(),
+      date: s.eventsDate,
+      items: s.events.map((e) => this.view(e)),
+      open_handoff_count: this.role === 'guardian' ? s.handoffs.filter((h) => !h.verdict).length : null,
+      next_event: next ? { id: next.id, scheduled_at: next.scheduled_at, time_of_day: next.slot.time_of_day } : null,
     };
+  }
+
+  async doseEvents(from: string, to: string) {
+    const { s } = await this.auth('guardian');
+    // 모의 구현은 오늘 건만 보관한다. 지난 날은 요약(3.25)의 모의 숫자만 있다
+    return s.eventsDate >= from && s.eventsDate <= to ? s.events.map((e) => this.view(e)) : [];
+  }
+
+  /** backend.md 5.2 기대 상태 계산 (모의: 기준선은 모두 찬 칸, 지난 날 칸은 드셨다고 본다) */
+  private expectedFor(target: DoseEvent): Map<string, ExpectedState> {
+    const order = this.s.slots.slice().sort((a, b) => weekMinutes(a) - weekMinutes(b));
+    const t = order.findIndex((x) => x.cell_id === target.slot.cell_id);
+    const byCell = new Map(this.s.events.map((e) => [e.slot.cell_id, e]));
+    const out = new Map<string, ExpectedState>();
+    order.forEach((slot, i) => {
+      if (i > t) return out.set(slot.cell_id, 'full');
+      if (i === t) return out.set(slot.cell_id, 'empty');
+      const ev = byCell.get(slot.cell_id);
+      // 오늘 놓친 칸(인계, 안 드심, 확인)은 비교 제외 (C2, 5.3)
+      if (ev && ev.outcome !== 'taken') return out.set(slot.cell_id, 'ignored');
+      return out.set(slot.cell_id, 'empty');
+    });
+    return out;
+  }
+
+  private mockReading(ev: DoseEvent, photo: Photo): Reading {
+    const expected = this.expectedFor(ev);
+    const target = ev.slot.cell_id;
+    const order = [...expected.keys()];
+    const nextCell = order[order.indexOf(target) + 1];
+    const sc = this.s.scenario;
+    const cells: CellResult[] = order.map((cellId) => {
+      const exp = expected.get(cellId)!;
+      let ai: CellState = exp === 'ignored' ? 'full' : exp;
+      if (cellId === target) ai = sc === 'unclear' ? 'unclear' : sc === 'unchanged' ? 'full' : 'empty';
+      if (sc === 'double_suspected' && cellId === nextCell) ai = 'empty';
+      let attention: Attention | null = null;
+      if (ai === 'unclear') attention = 'unclear';
+      else if (exp === 'full' && ai === 'empty') attention = 'unexpected_empty';
+      else if (exp === 'empty' && ai === 'full') attention = 'unexpected_full';
+      return { cell_id: cellId, ai_state: ai, expected: exp, attention, bbox: null };
+    });
+    const targetCell = cells.find((c) => c.cell_id === target)!;
+    let classification: Classification = 'normal';
+    if (targetCell.ai_state === 'unclear') classification = 'unclear';
+    else if (cells.some((c) => c.attention === 'unexpected_empty')) classification = 'double_suspected';
+    else if (targetCell.ai_state === 'full') classification = 'unchanged';
+    return { id: this.id('rd'), photo, is_mock: true, provider: 'mock', model: MOCK_MODEL, created_at: iso(new Date()), target_cell_id: target, classification, cells };
   }
 
   private handOff(ev: DoseEvent, reason: HandoffReason) {
     ev.state = 'handed_off';
-    ev.handoff = {
-      id: this.nextId('handoff'),
-      dose_event_id: ev.id,
-      reason,
-      notified_at: new Date().toISOString(),
-      verdict: null,
-      verdict_at: null,
-      acknowledged_at: null,
-    };
+    ev.retake_deadline_at = null;
+    this.s.handoffs.push({ id: this.id('h'), event_id: ev.id, reason, notified_at: iso(new Date()), verdict: null, verdict_by: null, verdict_at: null, late_photo: false });
   }
 
-  async uploadPhoto(eventId: string, photoUri: string | null): Promise<UploadResult> {
-    const s = await this.ready();
+  async uploadDosePhoto(eventId: string, local: LocalPhoto, clientUploadId: string): Promise<UploadResponse> {
+    const { s } = await this.auth('elder');
+    if (s.uploads[clientUploadId]) return copy(s.uploads[clientUploadId]);
     const ev = s.events.find((e) => e.id === eventId);
-    if (!ev) throw new Error('복약 건을 찾을 수 없어요');
-    const wasReminded = !!ev.reminded_at;
+    if (!ev) throw new ApiError(404, 'not_found', '모의');
+    const h = s.handoffs.find((x) => x.event_id === ev.id);
+    const now = Date.now();
+    const latePhoto = ev.state === 'handed_off' && h?.reason === 'no_response' && !h.verdict;
+    const early = ev.state === 'scheduled' && now >= new Date(ev.scheduled_at).getTime() - EARLY_PHOTO_MIN * 60_000;
+    if (ev.state === 'reading') throw new ApiError(409, 'reading_in_progress', '모의');
+    if (!(['asked', 'retake_requested', 'reminded'].includes(ev.state) || latePhoto || early)) throw new ApiError(409, 'event_not_open', '모의');
+
+    const prevState = ev.state;
     ev.state = 'reading';
-    ev.photos.push({ id: this.nextId('photo'), uri: photoUri, taken_at: new Date().toISOString() });
+    const photo = this.photoOf(local);
+    ev.photos.push(photo);
+    ev.is_mock = true;
     await this.commit();
+    await delay(READ_DELAY_MS);
 
-    await delay(1800);
+    const reading = this.mockReading(ev, photo);
+    const all = (s.readings[ev.id] ??= []);
+    all.push(reading);
+    const past = all.slice(0, -1);
+    const late = now > new Date(ev.handoff_at).getTime();
+    const mismatch = reading.cells.filter((c) => c.cell_id !== reading.target_cell_id && c.attention).map((c) => c.cell_id);
+    s.mismatch = mismatch.length
+      ? { detected: true, cell_ids: mismatch, reading_id: reading.id, detected_at: reading.created_at }
+      : { detected: false, cell_ids: [], reading_id: null, detected_at: null };
 
-    const reading = this.mockReading(ev, s.scenario);
-    ev.readings.push(reading);
-    const target = reading.cells.find((c) => c.cell_id === ev.cell_id)!;
-    const unexpectedEmpty = reading.cells.some((c) => c.cell_id !== ev.cell_id && c.state === 'empty' && isFutureCell(s, c.cell_id, ev.cell_id));
-    const anyUnclear = reading.cells.some((c) => c.state === 'unclear');
-    const late = Date.now() > new Date(ev.scheduled_at).getTime() + CONFIG.no_response_handoff_min * 60_000;
-
-    let result: UploadResult;
-    if (unexpectedEmpty) {
-      this.handOff(ev, 'double_suspected');
-      result = { next: 'handed_off', event: ev, reason: 'double_suspected' };
-    } else if (anyUnclear) {
-      const unclearCount = ev.readings.filter((r) => r.cells.some((c) => c.state === 'unclear')).length;
-      if (unclearCount <= CONFIG.max_unclear_retakes) {
-        ev.state = 'retake_requested';
-        result = { next: 'retake_requested', event: ev };
-      } else {
-        this.handOff(ev, 'unclear');
-        result = { next: 'handed_off', event: ev, reason: 'unclear' };
-      }
-    } else if (target.state === 'full') {
-      // R-009 설정 + R-007 C3: 복약 시간(+30분) 안이고, 안내 모드이고, 아직 안내하지 않았을 때만 1회 안내
-      if (s.settings.unchanged_policy === 'remind' && !wasReminded && !late) {
-        ev.state = 'reminded';
-        ev.reminded_at = new Date().toISOString();
-        result = { next: 'reminded', event: ev };
-      } else {
-        this.handOff(ev, 'unchanged');
-        result = { next: 'handed_off', event: ev, reason: 'unchanged' };
-      }
-    } else {
+    let result: UploadResponse['result'];
+    if (latePhoto && h) {
+      // 늦은 사진: 인계 건은 열어 두고 사진만 붙인다. 다시 알리지 않는다 (3.18)
+      h.late_photo = true;
+      ev.state = 'handed_off';
+      result = reading.classification === 'normal' ? 'recorded' : 'guardian_notified';
+    } else if (reading.classification === 'normal') {
       ev.state = 'done';
       ev.outcome = 'taken';
-      ev.resolved_at = new Date().toISOString();
-      result = { next: 'done', event: ev };
+      ev.outcome_source = 'ai';
+      ev.taken_at = photo.taken_at;
+      ev.resolved_at = iso(new Date());
+      result = 'recorded';
+    } else if (reading.classification === 'unclear') {
+      if (!late && !past.some((r) => r.classification === 'unclear')) {
+        ev.state = 'retake_requested';
+        ev.retake_deadline_at = addMin(iso(new Date()), TIMING.retake_wait_min);
+        result = 'retake';
+      } else {
+        this.handOff(ev, 'unclear');
+        result = 'guardian_notified';
+      }
+    } else if (reading.classification === 'unchanged') {
+      // R-009 설정 + R-007 C3: 복약 시간(+30분) 안이고, 안내 모드이고, 아직 안내하지 않았을 때만 1회 안내
+      const firstTime = prevState !== 'reminded' && !past.some((r) => r.classification === 'unchanged');
+      if (s.settings.unchanged_mode === 'remind_then_retake' && firstTime && !late) {
+        ev.state = 'reminded';
+        ev.retake_deadline_at = addMin(iso(new Date()), TIMING.retake_wait_min);
+        result = 'remind_retake';
+      } else {
+        this.handOff(ev, 'unchanged');
+        result = 'guardian_notified';
+      }
+    } else {
+      this.handOff(ev, 'double_suspected');
+      result = 'guardian_notified';
     }
+    const res: UploadResponse = { result, dose_event: this.view(ev), is_mock: true };
+    s.uploads[clientUploadId] = res;
     await this.commit();
-    return copy(result);
+    return copy(res);
   }
 
-  // ---- 인계 ----
+  // ---- 3.20 ~ 3.23 인계·사진 ----
 
-  async getOpenHandoffs() {
-    const s = await this.ready();
-    return copy(s.events.filter((e) => e.state === 'handed_off' && e.handoff && !e.handoff.verdict && !e.handoff.acknowledged_at));
+  private handoffItem(h: StoredHandoff): HandoffListItem {
+    const ev = this.s.events.find((e) => e.id === h.event_id)!;
+    const { event_id: _eventId, ...rest } = h;
+    return copy({ ...rest, allowed_verdicts: ALLOWED_VERDICTS[h.reason], dose_event: this.view(ev) });
   }
 
-  private findHandoff(id: string): { ev: DoseEvent; h: Handoff } {
-    const ev = this.store.events.find((e) => e.handoff?.id === id);
-    if (!ev || !ev.handoff) throw new Error('인계 건을 찾을 수 없어요');
-    return { ev, h: ev.handoff };
+  async handoffs(status: 'open' | 'closed' | 'all' = 'open') {
+    const { s } = await this.auth('guardian');
+    return s.handoffs
+      .filter((h) => status === 'all' || (status === 'open') === !h.verdict)
+      .sort((a, b) => Number(!!a.verdict) - Number(!!b.verdict) || b.notified_at.localeCompare(a.notified_at))
+      .map((h) => this.handoffItem(h));
   }
 
-  async submitVerdict(handoffId: string, verdict: 'taken' | 'not_taken') {
-    await this.ready();
-    const { ev, h } = this.findHandoff(handoffId);
+  async handoff(id: string): Promise<Handoff> {
+    const { s } = await this.auth('guardian');
+    const h = s.handoffs.find((x) => x.id === id);
+    if (!h) throw new ApiError(404, 'not_found', '모의');
+    return { ...this.handoffItem(h), readings: copy(s.readings[h.event_id] ?? []), layout: copy(s.pillbox!.layout) };
+  }
+
+  async verdict(handoffId: string, verdict: Verdict) {
+    const { s, me } = await this.auth('guardian');
+    const h = s.handoffs.find((x) => x.id === handoffId);
+    if (!h) throw new ApiError(404, 'not_found', '모의');
+    if (h.verdict) throw new ApiError(409, 'handoff_already_resolved', '모의', { verdict: h.verdict, verdict_by: h.verdict_by });
+    if (!ALLOWED_VERDICTS[h.reason].includes(verdict)) throw new ApiError(422, 'verdict_not_allowed', '모의');
+    const by = { device_id: me.id, display_name: me.display_name };
     h.verdict = verdict;
-    h.verdict_at = new Date().toISOString();
-    ev.state = 'done';
-    ev.outcome = verdict;
-    ev.resolved_at = h.verdict_at;
-    await this.commit();
-    return copy(h);
-  }
-
-  async acknowledgeHandoff(handoffId: string) {
-    await this.ready();
-    const { ev, h } = this.findHandoff(handoffId);
-    h.acknowledged_at = new Date().toISOString();
-    ev.state = 'done';
-    ev.outcome = 'acknowledged';
-    ev.resolved_at = h.acknowledged_at;
-    await this.commit();
-    return copy(h);
-  }
-
-  // ---- 리필 ----
-
-  async getRefillStatus(): Promise<RefillStatus> {
-    const s = await this.ready();
-    const wd = mondayIndex(new Date());
-    const takenToday = new Set(s.events.filter((e) => e.outcome === 'taken').map((e) => e.cell_id));
-    const ordered = s.schedule
-      .slice()
-      .sort((a, b) => minutesOfWeek(a.weekday, a.dose_time) - minutesOfWeek(b.weekday, b.dose_time));
-    // 모의 계산: 주간 약통을 월요일에 채웠다고 보고, 오늘 아직 안 드신 칸과 이후 칸을 남은 칸으로 센다
-    const remaining = ordered.filter((slot) => slot.weekday > wd || (slot.weekday === wd && !takenToday.has(slot.cell_id)));
-    const last = remaining[remaining.length - 1];
-    return {
-      last_refill_at: s.refills[s.refills.length - 1]?.at ?? null,
-      remaining_cells: remaining.length,
-      total_cells: s.pillbox.layout.cells.length,
-      last_covered: last ? { weekday: last.weekday, time_of_day: last.time_of_day } : null,
-      is_mock: true,
-    };
-  }
-
-  async createRefill(photoUri: string | null) {
-    const s = await this.ready();
-    s.refills.push({ at: new Date().toISOString(), photo_uri: photoUri });
-    await this.commit();
-    return this.getRefillStatus();
-  }
-
-  // ---- 요약·설정 ----
-
-  async getWeekSummary(): Promise<DaySummary[]> {
-    const s = await this.ready();
-    const days: DaySummary[] = [];
-    const perDay = s.schedule.filter((slot) => slot.weekday === 0).length;
-    for (let i = 6; i >= 1; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      // 지난 날은 모의 기록 (모두 정상)
-      days.push({ date: dateKey(d), total: perDay, taken: perDay, handed_off: 0, pending: 0 });
+    h.verdict_by = by;
+    h.verdict_at = iso(new Date());
+    const ev = s.events.find((e) => e.id === h.event_id)!;
+    if (verdict === 'taken' || verdict === 'not_taken' || verdict === 'acknowledged') {
+      ev.state = 'done';
+      ev.outcome = verdict;
+      ev.outcome_source = 'guardian';
+      ev.decided_by = by;
+      ev.resolved_at = h.verdict_at;
+      if (verdict === 'taken') ev.taken_at = h.verdict_at;
     }
-    const ev = s.events;
-    days.push({
-      date: s.eventsDate,
-      total: ev.length,
-      taken: ev.filter((e) => e.outcome === 'taken').length,
-      handed_off: ev.filter((e) => e.handoff).length,
-      pending: ev.filter((e) => e.state !== 'done' && !e.handoff).length,
-    });
-    return days;
-  }
-
-  async getSettings() {
-    return copy((await this.ready()).settings);
-  }
-
-  async updateSettings(patch: Partial<Settings>) {
-    const s = await this.ready();
-    s.settings = { ...s.settings, ...patch };
     await this.commit();
-    return copy(s.settings);
+    return this.handoff(handoffId);
+  }
+
+  async photo(id: string) {
+    const { s } = await this.auth();
+    const all = [...s.events.flatMap((e) => e.photos), ...s.refills.map((r) => r.baseline_reading.photo)];
+    const p = all.find((x) => x.id === id);
+    if (!p) throw new ApiError(404, 'not_found', '모의');
+    return copy(p);
+  }
+
+  // ---- 3.25 ~ 3.27 ----
+
+  async summaries(period: 'day' | 'week'): Promise<Summary[]> {
+    const { s } = await this.auth('guardian');
+    const reasons = (): Summary['handoffs_by_reason'] => ({ no_response: 0, unclear: 0, unchanged: 0, double_suspected: 0, refill_unconfirmed: 0, refill_overdue: 0 });
+    // 지난 날은 모의 숫자 (모두 정상)
+    const pastDay = (d: Date): Summary => {
+      const n = s.slots.filter((x) => x.weekday === mondayIndex(d)).length;
+      return {
+        period: 'day',
+        period_start: dateKey(d),
+        period_end: dateKey(d),
+        final: true,
+        counts: { scheduled: n, taken_ai: n, taken_guardian: 0, not_taken: 0, acknowledged: 0, open_handoffs: 0, pending: 0 },
+        handoffs_by_reason: reasons(),
+        all_normal: n > 0,
+        refill: null,
+        includes_mock: true,
+        includes_simulated: false,
+        pillbox_mismatch: false,
+      };
+    };
+    const ev = s.events;
+    const byReason = reasons();
+    s.handoffs.forEach((h) => (byReason[h.reason] += 1));
+    const counts = {
+      scheduled: ev.length,
+      taken_ai: ev.filter((e) => e.outcome === 'taken' && e.outcome_source === 'ai').length,
+      taken_guardian: ev.filter((e) => e.outcome === 'taken' && e.outcome_source === 'guardian').length,
+      not_taken: ev.filter((e) => e.outcome === 'not_taken').length,
+      acknowledged: ev.filter((e) => e.outcome === 'acknowledged').length,
+      open_handoffs: s.handoffs.filter((h) => !h.verdict).length,
+      pending: ev.filter((e) => e.state !== 'done' && e.state !== 'handed_off').length,
+    };
+    const today: Summary = {
+      period: 'day',
+      period_start: s.eventsDate,
+      period_end: s.eventsDate,
+      final: false,
+      counts,
+      handoffs_by_reason: byReason,
+      all_normal: counts.scheduled > 0 && counts.taken_ai === counts.scheduled && counts.open_handoffs === 0,
+      refill: null,
+      includes_mock: true,
+      includes_simulated: ev.some((e) => e.is_simulated),
+      pillbox_mismatch: s.mismatch.detected,
+    };
+    const days: Summary[] = [];
+    for (let i = 6; i >= 1; i--) days.push(pastDay(new Date(Date.now() - i * 86_400_000)));
+    days.push(today);
+    if (period === 'day') return days;
+
+    const week = days.slice(6 - mondayIndex(new Date()));
+    const sum = (k: keyof Summary['counts']) => week.reduce((n, d) => n + d.counts[k], 0);
+    return [
+      {
+        ...today,
+        period: 'week',
+        period_start: week[0].period_start,
+        counts: {
+          scheduled: sum('scheduled'),
+          taken_ai: sum('taken_ai'),
+          taken_guardian: sum('taken_guardian'),
+          not_taken: sum('not_taken'),
+          acknowledged: sum('acknowledged'),
+          open_handoffs: sum('open_handoffs'),
+          pending: sum('pending'),
+        },
+        all_normal: week.every((d) => d.all_normal),
+      },
+    ];
+  }
+
+  async settings(): Promise<Settings> {
+    const { s } = await this.auth('guardian');
+    return copy({ elder_display_name: s.family!.elder_display_name, ...s.settings });
+  }
+
+  async putSettings(patch: Partial<Settings>) {
+    const { s } = await this.auth('guardian');
+    const { elder_display_name, ...rest } = patch;
+    if (elder_display_name !== undefined) {
+      s.family!.elder_display_name = elder_display_name;
+      if (s.elder) s.elder.display_name = elder_display_name;
+    }
+    s.settings = { ...s.settings, ...rest };
+    await this.commit();
+    return this.settings();
+  }
+
+  async simulateDose(slotId: string) {
+    const { s } = await this.auth();
+    const slot = s.slots.find((x) => x.id === slotId);
+    if (!slot) throw new ApiError(404, 'not_found', '모의');
+    if (slot.weekday !== mondayIndex(new Date())) throw new ApiError(422, 'validation_error', '모의: 오늘 요일 칸이 아님');
+    let ev = s.events.find((e) => e.slot.id === slotId);
+    if (ev && ev.state !== 'scheduled') throw new ApiError(409, 'event_already_started', '모의');
+    if (!ev) {
+      this.addTodayEvents(new Set(s.events.map((e) => e.slot.cell_id)));
+      ev = s.events.find((e) => e.slot.id === slotId)!;
+    }
+    ev.scheduled_at = iso(new Date());
+    this.withTimes(ev);
+    ev.is_simulated = true;
+    ev.state = 'asked';
+    await this.commit();
+    return this.view(ev);
   }
 
   // ---- 개발용 ----
 
-  readonly dev: DevTools = {
-    getScenario: () => this.store.scenario,
+  readonly dev: MockDevTools = {
+    getScenario: () => this.s.scenario,
     setScenario: (scenario) => {
-      this.store.scenario = scenario;
+      this.s.scenario = scenario;
       void this.commit();
     },
-    simulateDoseTime: async () => {
-      const s = await this.ready();
-      const open = s.events.find((e) => e.state !== 'done' && e.state !== 'handed_off' && e.state !== 'scheduled');
-      const ev = open ?? s.events.find((e) => e.state === 'scheduled');
-      if (!ev) return null;
-      if (ev.state === 'scheduled') {
-        ev.state = 'asked';
-        // 시뮬레이션 시각을 지금으로 둔다 → +30분 창 계산이 지금 기준
-        ev.scheduled_at = new Date().toISOString();
-        ev.simulated = true;
-      }
-      await this.commit();
-      return copy(ev);
+    setActingRole: (role) => {
+      this.role = role;
+      this.listeners.forEach((l) => l());
     },
-    simulateNoResponseStep: async () => {
+    advanceTime: async () => {
       const s = await this.ready();
-      const ev = s.events.find((e) => e.state === 'asked' || e.state === 'reminded');
+      const ev = s.events.find((e) => ['asked', 'reminded', 'retake_requested'].includes(e.state));
       if (!ev) return null;
-      if (ev.state === 'reminded') {
-        // +15분 안에 재촬영 없음
-        this.handOff(ev, 'unchanged');
-      } else if (ev.reask_count < CONFIG.reask_offsets_min.length) {
-        ev.reask_count += 1;
-      } else {
-        this.handOff(ev, 'no_response');
-      }
+      // 다음 기한이 방금 지나간 것처럼 이 건의 시각들을 앞으로 당긴다
+      const now = Date.now();
+      const marks = ev.state === 'asked' ? [...ev.ask_times.slice(1), ev.handoff_at] : [ev.retake_deadline_at!];
+      const next = marks.map((m) => new Date(m).getTime()).find((t) => t > now);
+      const shiftMin = next ? Math.ceil((next - now) / 60_000) + 1 : 0;
+      const shift = (at: string) => addMin(at, -shiftMin);
+      ev.scheduled_at = shift(ev.scheduled_at);
+      ev.ask_times = ev.ask_times.map(shift);
+      ev.handoff_at = shift(ev.handoff_at);
+      if (ev.retake_deadline_at) ev.retake_deadline_at = shift(ev.retake_deadline_at);
+      const t = Date.now();
+      if (ev.state === 'asked' && t > new Date(ev.handoff_at).getTime()) this.handOff(ev, 'no_response');
+      else if (ev.state === 'reminded' && t > new Date(ev.retake_deadline_at!).getTime()) this.handOff(ev, 'unchanged');
+      else if (ev.state === 'retake_requested' && t > new Date(ev.retake_deadline_at!).getTime()) this.handOff(ev, 'unclear');
       await this.commit();
-      return copy(ev);
+      return this.view(ev);
     },
-    reset: async () => {
-      // 오늘 복약 건만 다시 만든다. 가족·약통·일정·설정은 유지
-      this.store.eventsDate = '';
+    resetToday: async () => {
+      await this.ready();
+      this.s.eventsDate = '';
       this.rollDay();
       await this.commit();
     },
   };
-}
-
-function isFutureCell(s: Store, cellId: string, targetCellId: string) {
-  const slot = s.schedule.find((x) => x.cell_id === cellId);
-  const target = s.schedule.find((x) => x.cell_id === targetCellId);
-  if (!slot || !target) return false;
-  return minutesOfWeek(slot.weekday, slot.dose_time) > minutesOfWeek(target.weekday, target.dose_time);
-}
-
-/** 화면이 내부 객체를 공유하지 않도록 복사해서 돌려준다 (실제 서버 응답과 같은 성질) */
-function copy<T>(v: T): T {
-  return v === null || v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T);
-}
-
-function delay(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 export function createMockApi(): Api {

@@ -2,74 +2,104 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { api, type MockScenario } from '@/api';
+import { api, isApiError, type DoseEvent, type MockScenario } from '@/api';
 import { SCENARIO_LABELS } from '@/components/MockBanner';
-import { useRole } from '@/lib/role';
-import { colors } from '@/theme';
 import { goBackOr } from '@/lib/nav';
+import { useRole } from '@/lib/role';
+import { TIME_OF_DAY_LABELS } from '@/lib/time';
+import { useApiData } from '@/lib/useApiData';
+import { colors } from '@/theme';
 
-/** 개발용 도구. 모의 구현일 때만 열린다. 시연 영상에서는 "모의·시뮬레이션" 표시가 같이 보인다 */
+/**
+ * 개발·시연 도구. 모의 서버이거나, 실제 서버의 시연 가족(is_demo + demo_mode)일 때만 열린다.
+ * 시연 영상에서는 "모의 판독"·"시뮬레이션" 표시가 같이 보인다.
+ */
 export default function DevPanel() {
   const { role, setRole } = useRole();
   const dev = api.dev;
   const [scenario, setScenario] = useState<MockScenario | undefined>(dev?.getScenario());
   const [msg, setMsg] = useState('');
-
-  if (!dev) return null;
+  const { data: today } = useApiData(() => api.today().catch(() => null));
 
   const pick = (s: MockScenario) => {
-    dev.setScenario(s);
+    dev?.setScenario(s);
     setScenario(s);
   };
 
+  // 3.27: 오늘 그 칸의 건이 아직 scheduled 이면 지금 시각으로 앞당긴다
+  const simulate = async (ev: DoseEvent) => {
+    try {
+      const opened = await api.simulateDose(ev.slot.id);
+      if (role === 'elder') {
+        router.dismissAll();
+        router.push({ pathname: '/elder/ask/[id]', params: { id: opened.id } });
+      } else setMsg('어르신 폰에 질문 화면이 열린 상태가 됐어요.');
+    } catch (e) {
+      setMsg(isApiError(e, 'event_already_started') ? '이 시간의 약은 이미 진행 중이에요.' : isApiError(e, 'not_found') ? '시연 가족이 아니에요.' : '시뮬레이션을 열지 못했어요.');
+    }
+  };
+
+  const scheduled = today?.items.filter((e) => e.state === 'scheduled') ?? [];
+
   return (
     <ScrollView contentContainerStyle={styles.root}>
-      <Text style={styles.h}>개발 도구 (모의)</Text>
+      <Text style={styles.h}>{dev ? '개발 도구 (모의 서버)' : '시연 도구'}</Text>
 
-      <Text style={styles.label}>다음 판독 결과 (모의 판독)</Text>
-      <View style={styles.wrap}>
-        {(Object.keys(SCENARIO_LABELS) as MockScenario[]).map((s) => (
-          <Pressable key={s} onPress={() => pick(s)} style={[styles.chip, scenario === s && styles.chipOn]} accessibilityRole="radio" accessibilityState={{ selected: scenario === s }}>
-            <Text style={[styles.chipText, scenario === s && styles.chipTextOn]}>
-              {scenario === s ? '● ' : '○ '}
-              {SCENARIO_LABELS[s]}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      {dev ? (
+        <>
+          <Text style={styles.label}>다음 판독 결과 (모의 판독)</Text>
+          <View style={styles.wrap}>
+            {(Object.keys(SCENARIO_LABELS) as MockScenario[]).map((s) => (
+              <Pressable
+                key={s}
+                onPress={() => pick(s)}
+                style={[styles.chip, scenario === s && styles.chipOn]}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: scenario === s }}
+              >
+                <Text style={[styles.chipText, scenario === s && styles.chipTextOn]}>
+                  {scenario === s ? '● ' : '○ '}
+                  {SCENARIO_LABELS[s]}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      ) : null}
 
-      <Text style={styles.label}>복약 시간</Text>
-      <Btn
-        label="지금 약 시간 시뮬레이션"
-        onPress={async () => {
-          const ev = await dev.simulateDoseTime();
-          if (!ev) return setMsg('오늘 남은 복약 건이 없어요. 아래에서 오늘 기록을 초기화하세요.');
-          if (role === 'elder') {
-            router.dismissAll();
-            router.push({ pathname: '/elder/ask/[id]', params: { id: ev.id } });
-          } else setMsg('어르신 폰에서 질문 화면이 열린 상태가 됐어요.');
-        }}
-      />
-      <Btn
-        label="무응답 한 단계 (재질문 → 인계)"
-        onPress={async () => {
-          const ev = await dev.simulateNoResponseStep();
-          if (!ev) return setMsg('열려 있는 질문이 없어요.');
-          setMsg(ev.state === 'handed_off' ? '보호자에게 인계됐어요 (무응답 / 칸 그대로).' : `재질문 ${ev.reask_count}회째`);
-        }}
-      />
+      <Text style={styles.label}>지금 약 시간 시뮬레이션</Text>
+      {scheduled.length ? (
+        scheduled.map((ev) => <Btn key={ev.id} label={`${TIME_OF_DAY_LABELS[ev.slot.time_of_day]} 약 시간 시뮬레이션`} onPress={() => simulate(ev)} />)
+      ) : (
+        <Text style={styles.msg}>{today === null ? '오늘 일정을 읽지 못했어요.' : '오늘 아직 시작하지 않은 약 시간이 없어요.'}</Text>
+      )}
 
-      <Text style={styles.label}>데이터</Text>
-      <Btn
-        label="오늘 기록 초기화"
-        onPress={async () => {
-          await dev.reset();
-          setMsg('오늘 기록을 초기화했어요. 연결과 설정은 유지돼요.');
-        }}
-      />
+      {dev ? (
+        <>
+          <Btn
+            label="시간 흘려보내기 (재질문 → 무응답 인계)"
+            onPress={async () => {
+              const ev = await dev.advanceTime();
+              if (!ev) return setMsg('열려 있는 질문이 없어요.');
+              setMsg(ev.state === 'handed_off' ? '보호자에게 인계됐어요.' : '다음 재질문 시각이 됐어요.');
+            }}
+          />
+          <Text style={styles.label}>데이터</Text>
+          <Btn
+            label="오늘 기록 초기화"
+            onPress={async () => {
+              await dev.resetToday();
+              setMsg('오늘 기록을 초기화했어요. 연결과 설정은 유지돼요.');
+            }}
+          />
+        </>
+      ) : null}
+
       <Btn
         label={`역할 바꾸기 (지금: ${role === 'elder' ? '어르신' : role === 'guardian' ? '보호자' : '없음'})`}
         onPress={async () => {
+          // 실제 서버에서는 이 기기의 토큰을 지운다. 서버의 기기 연결은 G8 에서 해제한다
+          if (!dev) await api.forgetToken();
           await setRole(null);
           router.dismissAll();
           router.replace('/role');

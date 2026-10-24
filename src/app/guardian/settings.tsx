@@ -2,67 +2,82 @@ import { router } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 
-import { api, type UnchangedPolicy } from '@/api';
+import { api, guardianMessage, type Device, type UnchangedMode } from '@/api';
 import { BigButton } from '@/components/BigButton';
 import { Field } from '@/components/Field';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { useRole } from '@/lib/role';
 import { useApiData } from '@/lib/useApiData';
-import { useFamily } from '@/lib/useFamily';
+import { useMe } from '@/lib/useMe';
 import { colors } from '@/theme';
 
 const RETENTION_OPTIONS = [30, 90, 180];
 
-/** G8 설정. 호칭, 시각, 약통 재등록, 칸 그대로 처리(R-009), 요약 알림·사진 보관(R-006), 연결 해제 */
+/** G8 설정 (api.md 3.7·3.8·3.26). 호칭, 시각, 약통 재등록, 칸 그대로 처리(R-009), 요약 알림·사진 보관(R-006), 기기 연결 */
 export default function Settings() {
-  const family = useFamily();
-  const { data: settings } = useApiData(() => api.getSettings());
+  const { data: me } = useMe();
+  const { data: settings } = useApiData(() => api.settings());
+  const { data: devices, reload: reloadDevices } = useApiData(() => api.devices());
   const { setRole } = useRole();
   const [elder, setElder] = useState('');
-  const [me, setMe] = useState('');
-  const [savedNames, setSavedNames] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [msg, setMsg] = useState('');
 
   useEffect(() => {
-    if (family) {
-      setElder(family.elder_display_name);
-      setMe(family.guardian_display_name);
+    if (settings) setElder(settings.elder_display_name);
+  }, [settings]);
+
+  if (!settings || !me) return null;
+
+  const put = async (patch: Parameters<typeof api.putSettings>[0]) => {
+    setMsg('');
+    try {
+      await api.putSettings(patch);
+    } catch (e) {
+      setMsg(guardianMessage(e));
     }
-  }, [family]);
-
-  if (!settings || !family) return null;
-
-  const policy = (p: UnchangedPolicy) => api.updateSettings({ unchanged_policy: p });
-
-  const disconnect = async () => {
-    await api.unpair();
-    await setRole(null);
-    router.dismissAll();
-    router.replace('/role');
   };
-  const confirmDisconnect = () => {
-    if (Platform.OS === 'web') return void disconnect();
-    Alert.alert('연결을 해제할까요?', '어르신 폰의 연결도 끊어져요. 다시 쓰려면 새로 연결해야 해요.', [
+
+  const unpair = async (d: Device) => {
+    try {
+      await api.deleteDevice(d.id);
+      if (d.is_me) {
+        await setRole(null);
+        router.dismissAll();
+        router.replace('/role');
+      } else reloadDevices();
+    } catch (e) {
+      setMsg(guardianMessage(e));
+    }
+  };
+  const confirmUnpair = (d: Device) => {
+    const title = d.is_me ? '이 폰의 연결을 해제할까요?' : `${d.display_name} 폰의 연결을 해제할까요?`;
+    if (Platform.OS === 'web') return void unpair(d);
+    Alert.alert(title, '해제하면 다시 연결해야 써요.', [
       { text: '취소', style: 'cancel' },
-      { text: '해제', style: 'destructive', onPress: disconnect },
+      { text: '해제', style: 'destructive', onPress: () => void unpair(d) },
     ]);
   };
 
   return (
     <Screen scroll>
       <Section title="호칭">
-        <Field label="어르신 호칭" value={elder} onChangeText={(t) => (setElder(t), setSavedNames(false))} />
-        <Field label="어르신 화면에 보일 내 이름" value={me} onChangeText={(t) => (setMe(t), setSavedNames(false))} />
+        <Field label="어르신 호칭" value={elder} onChangeText={(t) => (setElder(t), setSaved(false))} />
         <BigButton
           size="guardian"
           variant="secondary"
-          label={savedNames ? '✓ 저장했어요' : '호칭 저장'}
-          disabled={!elder.trim() || !me.trim()}
+          label={saved ? '✓ 저장했어요' : '호칭 저장'}
+          disabled={!elder.trim()}
           onPress={async () => {
-            await api.updateNames({ elder_display_name: elder.trim(), guardian_display_name: me.trim() });
-            setSavedNames(true);
+            await put({ elder_display_name: elder.trim() });
+            setSaved(true);
           }}
         />
+        {/* 보호자 자신의 이름은 이 API로 바꾸지 않는다 (3.26) */}
+        <T variant="small" style={{ color: colors.subtle }}>
+          어르신 화면에 보이는 내 이름: {me.device.display_name}
+        </T>
       </Section>
 
       <Section title="약통과 시각">
@@ -72,27 +87,23 @@ export default function Settings() {
 
       <Section title="약 칸이 그대로일 때">
         <Choice
-          selected={settings.unchanged_policy === 'remind'}
+          selected={settings.unchanged_mode === 'remind_then_retake'}
           title="앱에서 한 번 안내하고 다시 찍기 (기본)"
           detail={'"약 드실 시간이에요"라고 한 번 말씀드리고 사진을 다시 받아요. 그래도 그대로면 알려드려요.'}
-          onPress={() => policy('remind')}
+          onPress={() => put({ unchanged_mode: 'remind_then_retake' satisfies UnchangedMode })}
         />
         <Choice
-          selected={settings.unchanged_policy === 'handoff'}
+          selected={settings.unchanged_mode === 'handoff_immediately'}
           title="바로 나에게 알리기"
           detail="안내 없이 바로 알려드려요."
-          onPress={() => policy('handoff')}
+          onPress={() => put({ unchanged_mode: 'handoff_immediately' })}
         />
       </Section>
 
       <Section title="요약 알림">
         <View style={styles.switchRow}>
           <T style={{ flex: 1 }}>하루 요약을 {settings.summary_push_time}에 알림으로 받기</T>
-          <Switch
-            accessibilityLabel="하루 요약 알림"
-            value={settings.summary_push_enabled}
-            onValueChange={(v) => void api.updateSettings({ summary_push_enabled: v })}
-          />
+          <Switch accessibilityLabel="하루 요약 알림" value={settings.summary_push_enabled} onValueChange={(v) => void put({ summary_push_enabled: v })} />
         </View>
         <T variant="small" style={{ color: colors.subtle }}>
           {settings.summary_push_enabled ? '켜짐' : '꺼짐: 요약은 앱 안에서만 보여요'}
@@ -101,13 +112,25 @@ export default function Settings() {
 
       <Section title="사진 보관 기간">
         {RETENTION_OPTIONS.map((d) => (
-          <Choice key={d} selected={settings.photo_retention_days === d} title={`${d}일${d === 90 ? ' (기본)' : ''}`} onPress={() => api.updateSettings({ photo_retention_days: d })} />
+          <Choice key={d} selected={settings.photo_retention_days === d} title={`${d}일${d === 90 ? ' (기본)' : ''}`} onPress={() => put({ photo_retention_days: d })} />
         ))}
       </Section>
 
-      <Section title="연결">
-        <BigButton size="guardian" variant="secondary" label="연결 해제" onPress={confirmDisconnect} />
+      <Section title="연결된 폰">
+        {devices?.map((d) => (
+          <View key={d.id} style={styles.device}>
+            <T style={{ fontWeight: '700' }}>
+              {d.role === 'elder' ? '어르신 폰' : '보호자 폰'} · {d.display_name}
+              {d.is_me ? ' (이 폰)' : ''}
+            </T>
+            <BigButton size="guardian" variant="secondary" label="연결 해제" onPress={() => confirmUnpair(d)} />
+          </View>
+        ))}
+        {!devices?.some((d) => d.role === 'elder') ? (
+          <BigButton size="guardian" variant="secondary" label="어르신 폰 연결" onPress={() => router.push('/guardian/connect')} />
+        ) : null}
       </Section>
+      {msg ? <T style={{ color: colors.attention }}>{msg}</T> : null}
     </Screen>
   );
 }
@@ -123,12 +146,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function Choice({ selected, title, detail, onPress }: { selected: boolean; title: string; detail?: string; onPress: () => void }) {
   return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={[styles.choice, selected && styles.choiceOn]}
-    >
+    <Pressable accessibilityRole="radio" accessibilityState={{ selected }} onPress={onPress} style={[styles.choice, selected && styles.choiceOn]}>
       <T style={{ fontWeight: '700' }}>
         {selected ? '● ' : '○ '}
         {title}
@@ -142,4 +160,5 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 72 },
   choice: { borderWidth: 2, borderColor: colors.border, borderRadius: 12, padding: 14, gap: 4, minHeight: 72, justifyContent: 'center' },
   choiceOn: { borderWidth: 4, borderColor: colors.primary, backgroundColor: colors.secondaryBg },
+  device: { gap: 8, borderBottomWidth: 1, borderColor: colors.border, paddingBottom: 10 },
 });

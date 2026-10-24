@@ -1,9 +1,9 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { api } from '@/api';
+import { api, isApiError, type PairRequest } from '@/api';
 import { BigButton } from '@/components/BigButton';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
@@ -19,14 +19,21 @@ export default function Connect() {
   const [error, setError] = useState('');
   const pairing = useRef(false);
 
-  const pair = async (value: string) => {
+  const pair = async (req: PairRequest) => {
     if (pairing.current) return;
     pairing.current = true;
     try {
-      await api.pair(value);
+      await api.pair(req);
       router.replace('/elder/consent');
-    } catch {
-      setError('연결하지 못했어요. 코드를 다시 확인해 주세요.');
+    } catch (e) {
+      // 보호자가 대신 하는 화면이라 이유를 알려준다
+      setError(
+        isApiError(e, 'code_expired') || isApiError(e, 'code_used')
+          ? '코드가 만료됐어요. 보호자 폰에서 새 코드를 받아 주세요.'
+          : isApiError(e, 'network_error')
+            ? '서버에 연결하지 못했어요.'
+            : '연결하지 못했어요. 코드를 다시 확인해 주세요.',
+      );
       pairing.current = false;
     }
   };
@@ -40,7 +47,10 @@ export default function Connect() {
             style={StyleSheet.absoluteFill}
             facing="back"
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={({ data }) => pair(data)}
+            onBarcodeScanned={({ data }) => {
+              const qrCode = codeFromQr(data);
+              if (qrCode) void pair({ code: qrCode, platform });
+            }}
           />
         </View>
       ) : (
@@ -55,15 +65,23 @@ export default function Connect() {
         accessibilityLabel="6자리 연결 코드"
         style={styles.input}
       />
-      <BigButton label="숫자로 연결" variant="secondary" size="guardian" disabled={code.length !== 6} onPress={() => pair(code)} />
+      <BigButton label="숫자로 연결" variant="secondary" size="guardian" disabled={code.length !== 6} onPress={() => pair({ short_code: code, platform })} />
       {error ? <T variant="elderBody" style={{ color: colors.attention }}>{error}</T> : null}
-      {api.isMock ? (
-        <Pressable accessibilityRole="button" onPress={() => pair('mock')} style={{ padding: 12 }}>
+      {api.mode === 'mock' ? (
+        <Pressable accessibilityRole="button" onPress={() => pair({ code: 'mock', platform })} style={{ padding: 12 }}>
           <Text style={styles.mock}>개발용: 모의 연결 (실제 서버 아님)</Text>
         </Pressable>
       ) : null}
     </Screen>
   );
+}
+
+const platform = Platform.OS === 'android' || Platform.OS === 'ios' ? Platform.OS : null;
+
+/** QR 값 woowang://pair?code=... 에서 code 를 꺼낸다 (3.3 qr_payload) */
+function codeFromQr(data: string): string | null {
+  const m = /[?&]code=([^&]+)/.exec(data);
+  return m ? decodeURIComponent(m[1]) : null;
 }
 
 const styles = StyleSheet.create({

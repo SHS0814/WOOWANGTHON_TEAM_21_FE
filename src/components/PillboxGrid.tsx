@@ -1,29 +1,32 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import type { CellReading, CellState, PillboxLayout } from '@/api';
+import type { CellResult, CellState, Layout } from '@/api';
+import { ATTENTION_LABEL, attentionMark } from '@/lib/handoff';
 import { colors } from '@/theme';
 
 // 색만으로 구분하지 않도록 칸마다 기호를 쓴다
 export const CELL_SYMBOL: Record<CellState, string> = { empty: '○', full: '●', unclear: '?' };
-export const CELL_LABEL: Record<CellState, string> = { empty: '빈 칸', full: '찬 칸', unclear: 'AI가 확실하지 않은 칸' };
+export const CELL_LABEL: Record<CellState, string> = { empty: '빈 칸', full: '찬 칸', unclear: 'AI가 판단하지 못한 칸' };
 
 interface Props {
-  layout: PillboxLayout;
-  readings?: CellReading[];
-  targetCellId?: string;
-  /** 기대와 다른 칸 (이중 의심 등) */
-  flaggedCellIds?: string[];
+  layout: Layout;
+  cells?: CellResult[];
+  targetCellId?: string | null;
 }
 
-/** 약통 칸 배열과 판독 결과. 원본 신뢰도 숫자는 보여주지 않는다 (R-008 C5) */
-export function PillboxGrid({ layout, readings, targetCellId, flaggedCellIds = [] }: Props) {
-  const byId = new Map(readings?.map((r) => [r.cell_id, r]));
+/**
+ * 약통 칸 배열을 그린 그림과 판독 결과 (G2, G5, G7).
+ * attention 이 있는 칸은 점선과 기호로 강조한다. 원본 신뢰도 숫자는 없다 (R-008 C5)
+ */
+export function PillboxGrid({ layout, cells, targetCellId }: Props) {
+  const byId = new Map(cells?.map((c) => [c.cell_id, c]));
+  const hasAttention = !!cells?.some((c) => c.attention);
   return (
     <View>
       <View style={styles.row}>
         <View style={styles.rowLabel} />
-        {layout.col_labels.map((c) => (
-          <Text key={c} style={styles.colLabel}>
+        {layout.col_labels.map((c, i) => (
+          <Text key={i} style={styles.colLabel}>
             {c}
           </Text>
         ))}
@@ -33,29 +36,30 @@ export function PillboxGrid({ layout, readings, targetCellId, flaggedCellIds = [
           <Text style={[styles.rowLabel, styles.rowLabelText]}>{layout.row_labels[r]}</Text>
           {Array.from({ length: layout.cols }).map((__, c) => {
             const cell = layout.cells.find((x) => x.row === r && x.col === c);
-            const reading = cell ? byId.get(cell.id) : undefined;
-            const isTarget = cell?.id === targetCellId;
-            const flagged = !!cell && (flaggedCellIds.includes(cell.id) || reading?.state === 'unclear');
-            const label = `${layout.col_labels[c]} ${layout.row_labels[r]}${isTarget ? ', 이번 칸' : ''}${
-              reading ? `, ${CELL_LABEL[reading.state]}` : ''
-            }${flagged ? ', 확인 필요' : ''}`;
+            const res = cell ? byId.get(cell.id) : undefined;
+            const isTarget = !!cell && cell.id === targetCellId;
+            const att = res?.attention ?? null;
+            const label = [
+              `${layout.col_labels[c] ?? ''} ${layout.row_labels[r] ?? ''}`,
+              isTarget && '이번 칸',
+              res && CELL_LABEL[res.ai_state],
+              att && ATTENTION_LABEL[att],
+            ]
+              .filter(Boolean)
+              .join(', ');
             return (
-              <View
-                key={c}
-                accessible
-                accessibilityLabel={label}
-                style={[styles.cell, isTarget && styles.target, flagged && styles.flagged]}
-              >
-                <Text style={styles.symbol}>{reading ? CELL_SYMBOL[reading.state] : ''}</Text>
-                {isTarget ? <Text style={styles.tag}>이번</Text> : flagged ? <Text style={styles.tag}>확인</Text> : null}
+              <View key={c} accessible accessibilityLabel={label} style={[styles.cell, isTarget && styles.target, att && styles.flagged]}>
+                <Text style={styles.symbol}>{res ? CELL_SYMBOL[res.ai_state] : ''}</Text>
+                {att ? <Text style={styles.mark}>{attentionMark(att)}</Text> : isTarget ? <Text style={styles.tag}>이번</Text> : null}
               </View>
             );
           })}
         </View>
       ))}
-      {readings ? (
+      {cells ? (
         <Text style={styles.legend}>
-          ○ 빈 칸 · ● 찬 칸 · ? AI가 확실하지 않은 칸 · 굵은 테두리 = 이번 칸 · 점선 = 확인 필요
+          ○ 빈 칸 · ● 찬 칸 · ? AI가 판단 못 함{targetCellId ? ' · 굵은 테두리 = 이번 칸' : ''}
+          {hasAttention ? ' · 점선 = 확인할 칸 (? 확실하지 않음, ! 기대와 다름)' : ''}
         </Text>
       ) : null}
     </View>
@@ -65,7 +69,7 @@ export function PillboxGrid({ layout, readings, targetCellId, flaggedCellIds = [
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'stretch' },
   rowLabel: { width: 52, justifyContent: 'center' },
-  rowLabelText: { fontSize: 16, fontWeight: '700', color: colors.text, textAlignVertical: 'center', paddingTop: 14 },
+  rowLabelText: { fontSize: 16, fontWeight: '700', color: colors.text, paddingTop: 14 },
   colLabel: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '700', color: colors.text },
   cell: {
     flex: 1,
@@ -81,6 +85,7 @@ const styles = StyleSheet.create({
   target: { borderWidth: 4, borderColor: colors.primary },
   flagged: { borderWidth: 4, borderStyle: 'dashed', borderColor: colors.attention, backgroundColor: colors.attentionBg },
   symbol: { fontSize: 22, color: colors.text, fontWeight: '700' },
+  mark: { fontSize: 16, fontWeight: '900', color: colors.attention },
   tag: { fontSize: 12, fontWeight: '700', color: colors.text },
   legend: { marginTop: 8, fontSize: 16, color: colors.subtle, lineHeight: 22 },
 });

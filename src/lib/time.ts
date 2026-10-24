@@ -37,3 +37,9 @@ export function longDate(d: Date): string {
 export function weekdayLong(d: Date): string {
   return `${WEEKDAY_LABELS[mondayIndex(d)]}요일`;
 }
+
+/** 서울 기준 "YYYY-MM-DD" (api.md 1.3). 기기 시간대가 서울이라고 본다 */
+export function dateKey(d: Date): string {
+  const pad = (n: number) => `${n}`.padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}

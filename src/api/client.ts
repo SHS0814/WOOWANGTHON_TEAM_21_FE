@@ -1,99 +1,89 @@
-// 데이터 접근 인터페이스. 실제 서버 구현(HTTP)과 모의 구현(mock.ts)이 같은 모양을 따른다.
-// 경로 주석은 backend.md 10장 API 초안 기준.
+// 데이터 접근 인터페이스. 실제 서버 구현(http.ts)과 모의 구현(mock.ts)이 같은 모양을 따른다.
+// 메서드 하나가 api.md 3장 엔드포인트 하나에 대응한다. 주석의 번호는 계약서 절 번호.
 import type {
-  DaySummary,
+  ConsentRequest,
+  CreateFamilyRequest,
+  CreateFamilyResponse,
+  DetectResponse,
+  Device,
   DoseEvent,
-  Family,
   Handoff,
+  HandoffListItem,
+  Health,
+  Layout,
+  LocalPhoto,
+  Me,
+  PairingCode,
+  PairRequest,
+  PairResponse,
+  Photo,
   Pillbox,
-  PillboxLayout,
-  PillboxProposal,
-  RefillStatus,
-  ScheduleSlot,
-  ServerConfig,
+  PillboxCurrent,
+  Refill,
+  Schedule,
   Settings,
-  UploadResult,
+  SlotInput,
+  Summary,
+  TodayResponse,
+  UploadResponse,
   Verdict,
 } from './types';
 
-/** 개발용 모의 판독 시나리오 (R-008 5절) */
+/** 모의 구현의 다음 판독 결과 (개발용 스위치) */
 export type MockScenario = 'normal' | 'unclear' | 'unchanged' | 'double_suspected';
 
-export interface PairingCode {
-  qr: string;
-  short_code: string;
-  expires_at: string;
-}
-
-export interface DevTools {
+/** 모의 구현에서만 있는 개발 도구. http 구현에서는 undefined */
+export interface MockDevTools {
   getScenario(): MockScenario;
   setScenario(s: MockScenario): void;
-  /** "지금 약 시간" 시뮬레이션. 다음 복약 건을 asked 로 열고 돌려준다. 남은 건이 없으면 null */
-  simulateDoseTime(): Promise<DoseEvent | null>;
-  /** 열려 있는 복약 건에 재질문 1회를 시뮬레이션한다. 2회를 넘으면 무응답 인계 */
-  simulateNoResponseStep(): Promise<DoseEvent | null>;
-  /** 모의 데이터 전체 초기화 */
-  reset(): Promise<void>;
+  /** 한 기기에서 두 역할을 확인하려고, 모의 서버가 지금 어느 역할로 응답할지 정한다 */
+  setActingRole(role: 'elder' | 'guardian' | null): void;
+  /** 열린 복약 건의 시간을 한 단계 흘려보낸다 (재질문 → 무응답 인계, 재촬영 대기 → 인계) */
+  advanceTime(): Promise<DoseEvent | null>;
+  /** 오늘 복약 건만 다시 만든다. 가족·약통·일정·설정은 유지 */
+  resetToday(): Promise<void>;
 }
 
 export interface Api {
-  /** true 이면 모의 구현. 화면 상단에 "모의 판독 (실제 AI 아님)" 띠를 띄운다 */
-  readonly isMock: boolean;
-  /** 데이터가 바뀌면 호출된다. 반환값은 구독 해제 함수 */
+  /** 'mock' 이면 모의 서버. 화면에 모의 표시를 띄운다 */
+  readonly mode: 'mock' | 'http';
+  /** 데이터가 바뀌면 호출된다 (모의 구현 내부 변경, 쓰기 요청 성공). 반환값은 구독 해제 함수 */
   subscribe(listener: () => void): () => void;
+  /** 토큰이 무효가 되면(401 unauthorized / token_revoked) 호출된다. 저장된 토큰은 이미 지워진 상태 */
+  onAuthLost(listener: () => void): () => void;
 
-  /** GET /config (가정) */
-  getConfig(): Promise<ServerConfig>;
+  hasToken(): Promise<boolean>;
+  /** 이 기기의 토큰만 지운다 (서버 요청 없음) */
+  forgetToken(): Promise<void>;
 
-  // 가족·짝짓기 (backend.md 3장, R-008 C1)
-  getFamily(): Promise<Family | null>;
-  /** POST /families */
-  createFamily(input: { elder_display_name: string; guardian_display_name: string }): Promise<Family>;
-  /** POST /pairing-codes (kind=elder) */
-  createPairingCode(): Promise<PairingCode>;
-  /** POST /pair (어르신 폰이 QR 값 또는 6자리 코드로 호출) */
-  pair(code: string): Promise<Family>;
-  /** POST /consent */
-  consent(): Promise<void>;
-  /** DELETE /devices/{id} */
-  unpair(): Promise<void>;
+  /** 3.1 */ health(): Promise<Health>;
+  /** 3.2 성공하면 토큰을 저장한다 */ createFamily(req: CreateFamilyRequest): Promise<CreateFamilyResponse>;
+  /** 3.3 */ createPairingCode(kind: 'elder' | 'guardian'): Promise<PairingCode>;
+  /** 3.4 성공하면 토큰을 저장한다 */ pair(req: PairRequest): Promise<PairResponse>;
+  /** 3.5 */ consent(req: ConsentRequest): Promise<{ consent_at: string }>;
+  /** 3.6 */ me(): Promise<Me>;
+  /** 3.7 */ devices(): Promise<Device[]>;
+  /** 3.8 내 기기를 해제하면 토큰도 지운다 */ deleteDevice(id: string): Promise<void>;
+  /** 3.9 */ putPushToken(pushToken: string | null): Promise<void>;
+  /** 3.10 */ detectPillbox(photo: LocalPhoto): Promise<DetectResponse>;
+  /** 3.11 */ createPillbox(req: { photo_id: string; layout: Layout }): Promise<{ pillbox: Pillbox; refill: Refill }>;
+  /** 3.12 약통이 없으면 ApiError(404, pillbox_required) */ currentPillbox(): Promise<PillboxCurrent>;
+  /** 3.13 */ schedule(): Promise<Schedule>;
+  /** 3.14 */ putSchedule(slots: SlotInput[]): Promise<Schedule>;
+  /** 3.15 */ createRefill(photo: LocalPhoto): Promise<Refill>;
+  /** 3.16 */ updateBaseline(refillId: string, cells: { cell_id: string; state: 'full' | 'empty' }[]): Promise<Refill>;
+  /** 3.17 */ today(): Promise<TodayResponse>;
+  /** 3.18 판독이 끝날 때까지 기다린다 */
+  uploadDosePhoto(eventId: string, photo: LocalPhoto, clientUploadId: string): Promise<UploadResponse>;
+  /** 3.19 */ doseEvents(from: string, to: string): Promise<DoseEvent[]>;
+  /** 3.20 */ handoffs(status?: 'open' | 'closed' | 'all'): Promise<HandoffListItem[]>;
+  /** 3.21 */ handoff(id: string): Promise<Handoff>;
+  /** 3.22 */ verdict(handoffId: string, verdict: Verdict): Promise<Handoff>;
+  /** 3.23 */ photo(id: string): Promise<Photo>;
+  /** 3.25 */ summaries(period: 'day' | 'week', from?: string, to?: string): Promise<Summary[]>;
+  /** 3.26 */ settings(): Promise<Settings>;
+  /** 3.26 */ putSettings(patch: Partial<Settings>): Promise<Settings>;
+  /** 3.27 시연 트리거. 데모 가족이 아니면 ApiError(404, not_found) */ simulateDose(slotId: string): Promise<DoseEvent>;
 
-  // 약통·일정
-  getPillbox(): Promise<Pillbox | null>;
-  /** POST /pillboxes/detect */
-  detectPillbox(photoUri: string | null): Promise<PillboxProposal>;
-  /** POST /pillboxes */
-  savePillbox(layout: PillboxLayout, photoUri: string | null): Promise<Pillbox>;
-  getSchedule(): Promise<ScheduleSlot[]>;
-  /** PUT /schedule. 시간대별 복약 시각만 바꾼다 */
-  saveDoseTimes(times: Partial<Record<ScheduleSlot['time_of_day'], string>>): Promise<ScheduleSlot[]>;
-
-  // 복약 건
-  /** GET /dose-events/today */
-  getToday(): Promise<DoseEvent[]>;
-  getEvent(id: string): Promise<DoseEvent | null>;
-  /** POST /dose-events/{id}/photo. 서버가 판독하고 다음 상태를 정한다 */
-  uploadPhoto(eventId: string, photoUri: string | null): Promise<UploadResult>;
-
-  // 인계 (보호자)
-  getOpenHandoffs(): Promise<DoseEvent[]>;
-  /** POST /handoffs/{id}/verdict */
-  submitVerdict(handoffId: string, verdict: Verdict): Promise<Handoff>;
-  /** 판정이 필요 없는 인계 건을 확인 처리 (outcome = acknowledged) */
-  acknowledgeHandoff(handoffId: string): Promise<Handoff>;
-
-  // 리필 (R-007 C1, R-008 C3)
-  getRefillStatus(): Promise<RefillStatus>;
-  /** POST /refills (채운 약통 사진과 함께) */
-  createRefill(photoUri: string | null): Promise<RefillStatus>;
-
-  // 요약·설정
-  /** GET /summaries (최근 7일) */
-  getWeekSummary(): Promise<DaySummary[]>;
-  getSettings(): Promise<Settings>;
-  updateSettings(patch: Partial<Settings>): Promise<Settings>;
-  updateNames(input: { elder_display_name?: string; guardian_display_name?: string }): Promise<Family>;
-
-  /** 모의 구현에서만 존재 */
-  readonly dev?: DevTools;
+  readonly dev?: MockDevTools;
 }

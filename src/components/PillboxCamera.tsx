@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { api } from '@/api';
+import { api, type LocalPhoto } from '@/api';
 import { BigButton } from '@/components/BigButton';
 import { colors } from '@/theme';
 
@@ -11,7 +11,7 @@ interface Props {
   instruction: string;
   /** 가이드 틀 가로:세로 비율. 약통 배열(열/행)에서 계산한다 */
   aspect: number;
-  onCapture: (uri: string | null) => void;
+  onCapture: (photo: LocalPhoto) => void;
   size?: 'elder' | 'guardian';
 }
 
@@ -24,14 +24,16 @@ export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder' }
   const insets = useSafeAreaInsets();
   const big = size === 'elder';
 
+  const capture = (uri: string | null) => onCapture({ uri, taken_at: new Date().toISOString() });
+
   const shoot = async () => {
     setBusy(true);
     try {
       const pic = ready ? await ref.current?.takePictureAsync({ quality: 0.6 }) : undefined;
-      onCapture(pic?.uri ?? null);
+      capture(pic?.uri ?? null);
     } catch {
-      // 촬영이 안 되는 환경(시뮬레이터 등)에서는 사진 없이 진행한다. 모의 구현에서만 의미가 있다
-      onCapture(null);
+      // 촬영이 안 되는 환경(시뮬레이터 등)에서는 사진 없이 진행한다. 실제 서버는 사진 없는 업로드를 거절한다
+      capture(null);
     } finally {
       setBusy(false);
     }
@@ -41,7 +43,7 @@ export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder' }
 
   if (!permission.granted) {
     // 모의 구현에서는 카메라가 없어도 흐름을 확인할 수 있게 한다
-    const canSkip = api.isMock;
+    const canSkip = api.mode === 'mock';
     return (
       <View style={[styles.permission, { paddingBottom: insets.bottom + 16 }]}>
         <Text style={[styles.permText, { fontSize: big ? 30 : 22 }]}>약통 사진을 찍으려면 카메라를 써야 해요.</Text>
@@ -51,7 +53,7 @@ export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder' }
           <Text style={styles.permText}>설정에서 카메라를 허용해 주세요.</Text>
         )}
         {canSkip ? (
-          <Pressable onPress={() => onCapture(null)} accessibilityRole="button" style={styles.skip}>
+          <Pressable onPress={() => capture(null)} accessibilityRole="button" style={styles.skip}>
             <Text style={styles.skipText}>개발용: 카메라 없이 계속 (모의 사진)</Text>
           </Pressable>
         ) : null}
@@ -81,7 +83,7 @@ export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder' }
             <Text style={styles.shutterText}>{busy ? '…' : '찍기'}</Text>
           </Pressable>
           {Platform.OS === 'web' || !ready ? (
-            <Text style={styles.hint}>{api.isMock ? '카메라가 준비되지 않으면 사진 없이 진행해요 (모의)' : ''}</Text>
+            <Text style={styles.hint}>{api.mode === 'mock' ? '카메라가 준비되지 않으면 사진 없이 진행해요 (모의)' : '카메라를 준비하고 있어요'}</Text>
           ) : null}
         </View>
       </View>
