@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { api, type Role } from '@/api';
+import { clearElderNotifications } from '@/notify/elderSchedule';
 
 // 이 기기의 역할. 첫 실행 때 한 번 고른다 (R-008 1절). 토큰을 받은 뒤에는 서버의 device.role 과 같다
 const KEY = 'woowang.device-role';
@@ -34,6 +35,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   const setRole = useCallback(
     async (r: Role | null) => {
+      // 어르신 역할을 벗어나면(연결 해제, 토큰 무효, 역할 변경) 예약된 복약 알림을 지운다
+      if (r !== 'elder') void clearElderNotifications().catch(() => {});
       apply(r);
       try {
         if (r) await AsyncStorage.setItem(KEY, r);

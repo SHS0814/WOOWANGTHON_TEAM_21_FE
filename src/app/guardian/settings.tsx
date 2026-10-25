@@ -8,11 +8,21 @@ import { Field } from '@/components/Field';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { useRole } from '@/lib/role';
+import { onPushStatus, pushStatus, type PushStatus } from '@/notify/guardianPush';
 import { useApiData } from '@/lib/useApiData';
 import { useMe } from '@/lib/useMe';
 import { colors } from '@/theme';
 
 const RETENTION_OPTIONS = [30, 90, 180];
+
+const PUSH_TEXT: Record<PushStatus, string> = {
+  unknown: '알림을 준비하고 있어요.',
+  registered: '✓ 이 폰으로 알려드려요.',
+  denied: '! 알림 권한이 꺼져 있어요. 폰 설정에서 알림을 켜 주세요.',
+  unsupported: '이 환경(웹)에서는 알림을 받을 수 없어요. 처리할 일은 홈에서 보여요.',
+  no_project: '! 이 앱 빌드에는 푸시 설정이 없어 알림을 받을 수 없어요 (개발용). 처리할 일은 홈에서 보여요.',
+  failed: '! 알림 등록에 실패했어요. 앱을 다시 열면 다시 시도해요. 처리할 일은 홈에서 보여요.',
+};
 
 /** G8 설정 (api.md 3.7·3.8·3.26). 호칭, 시각, 약통 재등록, 칸 그대로 처리(R-009), 요약 알림·사진 보관(R-006), 기기 연결 */
 export default function Settings() {
@@ -23,6 +33,8 @@ export default function Settings() {
   const [elder, setElder] = useState('');
   const [saved, setSaved] = useState(false);
   const [msg, setMsg] = useState('');
+  const [push, setPush] = useState<PushStatus>(pushStatus());
+  useEffect(() => onPushStatus(() => setPush(pushStatus())), []);
 
   useEffect(() => {
     if (settings) setElder(settings.elder_display_name);
@@ -98,6 +110,10 @@ export default function Settings() {
           detail="안내 없이 바로 알려드려요."
           onPress={() => put({ unchanged_mode: 'handoff_immediately' })}
         />
+      </Section>
+
+      <Section title="확인이 필요할 때 알림">
+        <T>{PUSH_TEXT[push]}</T>
       </Section>
 
       <Section title="요약 알림">
