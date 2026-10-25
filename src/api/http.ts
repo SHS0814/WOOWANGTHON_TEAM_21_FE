@@ -1,4 +1,5 @@
 // 실제 서버 구현. api.md 1장 공통 규칙(주소, Bearer 기기 토큰, 오류 형식)과 3장 엔드포인트.
+import { File } from 'expo-file-system';
 import { Platform as RNPlatform } from 'react-native';
 
 import type { Api } from './client';
@@ -112,6 +113,8 @@ class HttpApi implements Api {
         signal: controller.signal,
       });
     } catch (e) {
+      // 서버에 닿기 전에 실패하면 원인을 남긴다 (Q-011 은 이 로그로 찾았다)
+      if (__DEV__) console.warn('[http] 요청 실패', method, url, form ? 'multipart' : 'json', e instanceof Error ? `${e.name}: ${e.message}` : String(e));
       throw new ApiError(0, 'network_error', e instanceof Error ? e.message : String(e));
     } finally {
       clearTimeout(timer);
@@ -273,7 +276,14 @@ function safeJson(text: string): unknown {
   }
 }
 
-/** multipart 본문: photo(필수) + taken_at (3.10, 3.15, 3.18) */
+/**
+ * multipart 본문: photo(필수) + taken_at (3.10, 3.15, 3.18).
+ *
+ * 네이티브: Expo SDK 58 은 전역 fetch 를 expo/fetch 로 바꾼다 (expo/src/winter/runtime.native.ts).
+ * expo/fetch 의 FormData 변환은 React Native 식 { uri, name, type } 파트를 받지 않고
+ * "Unsupported FormDataPart implementation" 을 던진다 (요청이 서버에 닿지 않음, Q-011).
+ * 그래서 expo-file-system 의 File(Blob 을 구현, bytes() 지원)로 넣는다
+ */
 async function photoForm(photo: LocalPhoto): Promise<FormData> {
   if (!photo.uri) throw new ApiError(0, 'no_photo', '올릴 사진이 없음');
   const form = new FormData();
@@ -282,8 +292,10 @@ async function photoForm(photo: LocalPhoto): Promise<FormData> {
     const blob = await (await fetch(photo.uri)).blob();
     form.append('photo', blob, 'photo.jpg');
   } else {
-    // React Native 의 FormData 는 { uri, name, type } 객체를 파일로 보낸다
-    form.append('photo', { uri: photo.uri, name: 'photo.jpg', type: 'image/jpeg' } as unknown as Blob);
+    const file = new File(photo.uri);
+    // 카메라 캐시 파일이 업로드 전에 지워졌으면 서버에 보내기 전에 알린다
+    if (!file.exists) throw new ApiError(0, 'no_photo', `사진 파일이 없음: ${photo.uri}`);
+    form.append('photo', file, 'photo.jpg');
   }
   form.append('taken_at', photo.taken_at);
   return form;

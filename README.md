@@ -128,4 +128,5 @@ npx expo start --dev-client     # 그다음부터는 JS 만 다시 불러온다 
 | Expo, expo-router | 앱, 화면 이동 |
 | expo-camera | 약통 촬영, 연결 QR 스캔 |
 | expo-secure-store | 기기 토큰 보관 |
+| expo-file-system | 사진 업로드 본문(File). Expo SDK 58 의 fetch(expo/fetch)는 React Native 식 `{ uri }` FormData 파트를 받지 않는다 (Q-011) |
 | react-native-qrcode-svg | 연결 QR 표시 |
