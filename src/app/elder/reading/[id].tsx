@@ -6,6 +6,7 @@ import { api, isApiError, type UploadResultKind } from '@/api';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { setPendingScenario } from '@/lib/devScenario';
+import { doseName } from '@/lib/doseLabel';
 import { uuid } from '@/lib/uuid';
 import { colors } from '@/theme';
 
@@ -48,7 +49,8 @@ export default function Reading() {
           params: {
             id,
             kind: KIND[res.result] ?? 'handoff',
-            tod: res.dose_event.slot.time_of_day,
+            // 전날 건이면 "어젯밤 자기 전"처럼 날짜를 붙인 이름 (R-021 Q-007)
+            name: doseName(res.dose_event),
             mock: res.is_mock ? '1' : '',
             sim: res.dose_event.is_simulated ? '1' : '',
           },

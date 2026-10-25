@@ -39,6 +39,8 @@ export interface MockDevTools {
   advanceTime(): Promise<DoseEvent | null>;
   /** 오늘 복약 건만 다시 만든다. 가족·약통·일정·설정은 유지 */
   resetToday(): Promise<void>;
+  /** 어제 날짜의 끝나지 않은 복약 건(carried_over)을 하나 만든다. 자정을 기다리지 않고 Q-007 화면을 보려고 */
+  addCarriedOver(): Promise<DoseEvent | null>;
 }
 
 export interface Api {

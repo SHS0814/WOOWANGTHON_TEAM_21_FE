@@ -47,6 +47,8 @@ const MOCK_MODEL = 'mock-v1';
 const READ_DELAY_MS = 1800;
 /** 복약 시각 60분 전부터 사진을 받는다 (3.18, R-010 13번) */
 const EARLY_PHOTO_MIN = 60;
+/** 전날 끝나지 않은 건을 오늘 목록에 남기는 시간 (3.17, R-021 Q-007) */
+const CARRY_OVER_HOURS = 6;
 
 // R-006 확정값. 실제로는 서버의 GET /me server.timing 에서 내려온다 (R-007 C5)
 const TIMING = { reask_offsets_min: [10, 20], no_response_handoff_min: 30, retake_wait_min: 15 };
@@ -481,7 +483,7 @@ class MockApi implements Api {
     // 3.14: 오늘 남은 scheduled 건은 새 일정으로 다시 만든다. 이미 물어본 건은 그대로 둔다
     const started = s.events.filter((e) => e.state !== 'scheduled');
     s.events = started;
-    this.addTodayEvents(new Set(started.map((e) => e.slot.cell_id)));
+    this.addTodayEvents(new Set(started.map((e) => e.slot.cell_id)), true);
     await this.commit();
     return this.schedule();
   }
@@ -518,16 +520,29 @@ class MockApi implements Api {
     const key = dateKey(new Date());
     if (this.s.eventsDate === key) return;
     this.s.eventsDate = key;
-    this.s.events = [];
-    this.s.handoffs = [];
-    this.s.readings = {};
+    // 3.17 (R-021 Q-007): 전날 끝나지 않은 건은 예정 시각 후 6시간 안이면 오늘 목록 앞쪽에 남긴다
+    const carried = this.s.events.filter((e) => this.isCarryable(e));
+    carried.forEach((e) => (e.carried_over = true));
+    const keep = new Set(carried.map((e) => e.id));
+    this.s.events = carried;
+    this.s.handoffs = this.s.handoffs.filter((h) => keep.has(h.event_id));
+    this.s.readings = Object.fromEntries(Object.entries(this.s.readings).filter(([id]) => keep.has(id)));
     this.addTodayEvents(new Set());
   }
 
-  private addTodayEvents(skipCells: Set<string>) {
+  private isCarryable(e: DoseEvent): boolean {
+    if (Date.now() - new Date(e.scheduled_at).getTime() > CARRY_OVER_HOURS * 3_600_000) return false;
+    if (['asked', 'retake_requested', 'reminded'].includes(e.state)) return true;
+    const h = this.s.handoffs.find((x) => x.event_id === e.id);
+    return e.state === 'handed_off' && h?.reason === 'no_response' && e.photos.length === 0;
+  }
+
+  /** onlyLater: 일정 저장 때는 저장 시각보다 이른 오늘 칸을 만들지 않는다 (3.14, R-021 Q-001) */
+  private addTodayEvents(skipCells: Set<string>, onlyLater = false) {
     const today = new Date();
     const wd = mondayIndex(today);
     for (const slot of this.s.slots.filter((x) => x.weekday === wd && !skipCells.has(x.cell_id))) {
+      if (onlyLater && atTime(today, slot.dose_time).getTime() < today.getTime()) continue;
       const at = iso(atTime(today, slot.dose_time));
       this.s.events.push(
         this.withTimes({
@@ -548,11 +563,14 @@ class MockApi implements Api {
           photos: [],
           is_mock: false,
           is_simulated: false,
+          carried_over: false,
+          reminded_at: null,
           latest_reading: null,
           handoff: null,
         }),
       );
     }
+    // 전날 건(carried_over)이 앞쪽에 온다
     this.s.events.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
   }
 
@@ -564,6 +582,8 @@ class MockApi implements Api {
 
   private elderStatus(ev: DoseEvent): DoseEvent['elder_status'] {
     if (ev.outcome === 'taken') return 'recorded';
+    // 늦은 정상 사진: 보호자 판정 전이거나 확인(acknowledged)이어도 어르신 기준으로는 기록 (R-021 Q-004)
+    if (ev.taken_at && ev.outcome !== 'not_taken') return 'recorded';
     if (ev.state === 'scheduled') return 'upcoming';
     if (['asked', 'reading', 'retake_requested', 'reminded'].includes(ev.state)) return 'waiting';
     return 'no_record';
@@ -580,6 +600,7 @@ class MockApi implements Api {
     if (this.role === 'elder') {
       out.latest_reading = null;
       out.handoff = null;
+      out.reminded_at = null;
     }
     return out;
   }
@@ -685,6 +706,8 @@ class MockApi implements Api {
       // 늦은 사진: 인계 건은 열어 두고 사진만 붙인다. 다시 알리지 않는다 (3.18)
       h.late_photo = true;
       ev.state = 'handed_off';
+      // 정상이면 어르신 기준 기록으로 본다. 판정은 보호자가 한다 (R-021 Q-004)
+      if (reading.classification === 'normal') ev.taken_at = photo.taken_at;
       result = reading.classification === 'normal' ? 'recorded' : 'guardian_notified';
     } else if (reading.classification === 'normal') {
       ev.state = 'done';
@@ -694,7 +717,8 @@ class MockApi implements Api {
       ev.resolved_at = iso(new Date());
       result = 'recorded';
     } else if (reading.classification === 'unclear') {
-      if (!late && !past.some((r) => r.classification === 'unclear')) {
+      // 다시 찍어 달라는 요청은 종류와 관계없이 건당 1회 (R-021 Q-005). 두 번째 사진이 있으면 이미 요청한 것이다
+      if (!late && past.length === 0) {
         ev.state = 'retake_requested';
         ev.retake_deadline_at = addMin(iso(new Date()), TIMING.retake_wait_min);
         result = 'retake';
@@ -704,9 +728,10 @@ class MockApi implements Api {
       }
     } else if (reading.classification === 'unchanged') {
       // R-009 설정 + R-007 C3: 복약 시간(+30분) 안이고, 안내 모드이고, 아직 안내하지 않았을 때만 1회 안내
-      const firstTime = prevState !== 'reminded' && !past.some((r) => r.classification === 'unchanged');
+      const firstTime = prevState !== 'reminded' && past.length === 0;
       if (s.settings.unchanged_mode === 'remind_then_retake' && firstTime && !late) {
         ev.state = 'reminded';
+        ev.reminded_at = iso(new Date());
         ev.retake_deadline_at = addMin(iso(new Date()), TIMING.retake_wait_min);
         result = 'remind_retake';
       } else {
@@ -763,7 +788,9 @@ class MockApi implements Api {
       ev.outcome_source = 'guardian';
       ev.decided_by = by;
       ev.resolved_at = h.verdict_at;
-      if (verdict === 'taken') ev.taken_at = h.verdict_at;
+      // 늦은 사진 시각이 있으면 그 시각, 없으면 판정 시각. 안 드심이면 기록 없음 (2.5)
+      if (verdict === 'taken') ev.taken_at = ev.taken_at ?? h.verdict_at;
+      if (verdict === 'not_taken') ev.taken_at = null;
     }
     await this.commit();
     return this.handoff(handoffId);
@@ -918,6 +945,42 @@ class MockApi implements Api {
       if (ev.state === 'asked' && t > new Date(ev.handoff_at).getTime()) this.handOff(ev, 'no_response');
       else if (ev.state === 'reminded' && t > new Date(ev.retake_deadline_at!).getTime()) this.handOff(ev, 'unchanged');
       else if (ev.state === 'retake_requested' && t > new Date(ev.retake_deadline_at!).getTime()) this.handOff(ev, 'unclear');
+      await this.commit();
+      return this.view(ev);
+    },
+    addCarriedOver: async () => {
+      const s = await this.ready();
+      const yesterday = new Date(Date.now() - 86_400_000);
+      const slots = s.slots.filter((x) => x.weekday === mondayIndex(yesterday)).sort((a, b) => b.dose_time.localeCompare(a.dose_time));
+      const slot = slots[0];
+      if (!slot) return null;
+      // 모의: 예정 시각은 6시간 창 안에 들도록 두 시간 전으로 두고, 날짜는 어제로 둔다
+      const at = addMin(iso(new Date()), -120);
+      const ev = this.withTimes({
+        id: this.id('ev'),
+        date: dateKey(yesterday),
+        slot: copy(slot),
+        scheduled_at: at,
+        state: 'asked',
+        outcome: null,
+        outcome_source: null,
+        decided_by: null,
+        taken_at: null,
+        resolved_at: null,
+        elder_status: 'waiting',
+        ask_times: [],
+        handoff_at: at,
+        retake_deadline_at: null,
+        photos: [],
+        is_mock: false,
+        is_simulated: true,
+        carried_over: true,
+        reminded_at: null,
+        latest_reading: null,
+        handoff: null,
+      });
+      this.handOff(ev, 'no_response');
+      s.events.unshift(ev);
       await this.commit();
       return this.view(ev);
     },

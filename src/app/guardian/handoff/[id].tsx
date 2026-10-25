@@ -11,9 +11,10 @@ import { PillboxGrid } from '@/components/PillboxGrid';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { reasonDetail, reasonTitle, VERDICT_LABEL } from '@/lib/handoff';
+import { doseName } from '@/lib/doseLabel';
 import { goBackOr } from '@/lib/nav';
 import { pillboxAspect } from '@/lib/pillboxAspect';
-import { spokenTime, TIME_OF_DAY_LABELS } from '@/lib/time';
+import { spokenTime } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
 import { useMe } from '@/lib/useMe';
 import { colors } from '@/theme';
@@ -31,7 +32,7 @@ export default function HandoffDetail() {
 
   if (!h || !me) return null;
   const ev = h.dose_event;
-  const tod = TIME_OF_DAY_LABELS[ev.slot.time_of_day];
+  const tod = doseName(ev);
   // 최근 판독을 맨 위에, 이전 판독(첫 촬영)은 아래에
   const readings = h.readings.slice().reverse();
 

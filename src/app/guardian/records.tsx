@@ -5,7 +5,8 @@ import { JudgeBadge } from '@/components/AiBadge';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { reasonTitle, VERDICT_LABEL } from '@/lib/handoff';
-import { dateKey, mondayIndex, spokenTime, TIME_OF_DAY_LABELS, WEEKDAY_LABELS } from '@/lib/time';
+import { doseName } from '@/lib/doseLabel';
+import { dateKey, mondayIndex, spokenTime, WEEKDAY_LABELS } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
 import { colors } from '@/theme';
 
@@ -90,7 +91,7 @@ function DayRow({ s }: { s: Summary }) {
 }
 
 function EventRow({ ev }: { ev: DoseEvent }) {
-  const tod = TIME_OF_DAY_LABELS[ev.slot.time_of_day];
+  const tod = doseName(ev);
   let status: string;
   if (ev.outcome && ev.outcome_source === 'guardian') status = VERDICT_LABEL[ev.outcome];
   else if (ev.outcome === 'taken') status = '✓ 정상';

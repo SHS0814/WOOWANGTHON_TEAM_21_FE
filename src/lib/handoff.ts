@@ -1,4 +1,5 @@
 import type { Attention, Handoff, HandoffReason, Verdict } from '@/api';
+import { spokenTime } from '@/lib/time';
 
 export const REASON_TITLE: Record<HandoffReason, string> = {
   no_response: '답이 없으셨어요',
@@ -15,14 +16,16 @@ export function reasonTitle(reason: string): string {
 }
 
 export function reasonDetail(h: Handoff, elder: string): string {
-  const unchangedCount = h.readings.filter((r) => r.classification === 'unchanged').length;
   switch (h.reason as HandoffReason) {
     case 'no_response':
       return `${elder}께 ${h.dose_event.ask_times.length}번 여쭤봤는데 답이 없으셨어요.`;
     case 'unclear':
       return 'AI가 사진에서 이번 칸을 확실히 보지 못했어요. 사진을 보고 판정해 주세요.';
     case 'unchanged':
-      return unchangedCount >= 2 ? '"약 드실 시간이에요"라고 한 번 안내했는데도 칸이 그대로예요.' : '이번 칸에 약이 그대로 있어요.';
+      // 서버가 안내 시각(reminded_at)을 준다. 판독 횟수로 짐작하지 않는다 (R-021 Q-006)
+      return h.dose_event.reminded_at
+        ? `${spokenTime(new Date(h.dose_event.reminded_at))}에 약 드실 시간이라고 한 번 안내했어요. 그래도 칸이 그대로예요.`
+        : '이번 칸에 약이 그대로 있어요.';
     case 'double_suspected':
       return '아직 차 있어야 할 다른 칸도 비어 있어요.';
     case 'refill_unconfirmed':

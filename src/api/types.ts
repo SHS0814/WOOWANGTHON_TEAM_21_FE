@@ -86,9 +86,14 @@ export interface DoseEvent {
   outcome: DoseOutcome | null;
   outcome_source: 'ai' | 'guardian' | null;
   decided_by: PersonRef | null;
+  /** 복용 기록 시각. AI 정상·늦은 정상 사진이면 사진 촬영 시각, 보호자 판정 taken 이면 늦은 사진 시각 또는 판정 시각 (R-021 Q-004) */
   taken_at: string | null;
   resolved_at: string | null;
   elder_status: ElderStatus;
+  /** 전날 건인데 아직 끝나지 않아 오늘 목록에 함께 나온 건. date 는 원래 날짜 그대로다 (3.17, R-021 Q-007) */
+  carried_over: boolean;
+  /** "약 드실 시간이에요" 안내(E7d)를 한 시각. 보호자 응답에서만 값이 있다 (R-021 Q-006) */
+  reminded_at: string | null;
   /** [복약 시각, 재질문1, 재질문2]. 서버값 */
   ask_times: string[];
   handoff_at: string;

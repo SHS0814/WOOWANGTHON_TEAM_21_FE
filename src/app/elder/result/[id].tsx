@@ -1,12 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
 
-import type { TimeOfDay } from '@/api';
 import { BigButton } from '@/components/BigButton';
 import { MockResultTag, SimulationTag } from '@/components/MockBanner';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
-import { TIME_OF_DAY_LABELS } from '@/lib/time';
 import { guardianName, useMe } from '@/lib/useMe';
 
 type Kind = 'done' | 'retake' | 'remind' | 'handoff' | 'error';
@@ -22,7 +20,7 @@ const AUTO_HOME_MS = 5000;
  * 어떤 경우에도 "더 드세요", "드시지 마세요" 같은 지시는 하지 않는다 (원칙 6). 문구는 앱 템플릿이다
  */
 export default function Result() {
-  const { id, kind, tod, mock, sim } = useLocalSearchParams<{ id: string; kind: Kind; tod?: TimeOfDay; mock?: string; sim?: string }>();
+  const { id, kind, name, mock, sim } = useLocalSearchParams<{ id: string; kind: Kind; name?: string; mock?: string; sim?: string }>();
   const { data: me } = useMe();
 
   const autoHome = kind === 'done' || kind === 'handoff';
@@ -51,7 +49,7 @@ export default function Result() {
           </T>
           <T variant="elderTitle" style={{ textAlign: 'center' }}>
             고마워요.{'\n'}
-            {tod ? `${TIME_OF_DAY_LABELS[tod]} ` : ''}약 기록해 뒀어요.
+            {name ? `${name} ` : ''}약 기록해 뒀어요.
           </T>
         </Screen>
       );

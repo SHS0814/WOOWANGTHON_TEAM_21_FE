@@ -103,6 +103,13 @@ export default function DevPanel() {
           />
           <Text style={styles.label}>데이터</Text>
           <Btn
+            label="전날 미완료 건 만들기 (모의, 자정 넘김 확인용)"
+            onPress={async () => {
+              const ev = await dev.addCarriedOver();
+              setMsg(ev ? '어제 날짜의 끝나지 않은 건을 만들었어요 (carried_over).' : '어제 요일의 일정이 없어요.');
+            }}
+          />
+          <Btn
             label="오늘 기록 초기화"
             onPress={async () => {
               await dev.resetToday();

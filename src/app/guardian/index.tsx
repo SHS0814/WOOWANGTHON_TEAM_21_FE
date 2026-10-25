@@ -7,7 +7,8 @@ import { SimulationTag } from '@/components/MockBanner';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { reasonTitle } from '@/lib/handoff';
-import { dateKey, spokenTime, TIME_OF_DAY_LABELS } from '@/lib/time';
+import { doseName } from '@/lib/doseLabel';
+import { dateKey, spokenTime } from '@/lib/time';
 import { POLL_MS, useApiData } from '@/lib/useApiData';
 import { useMe } from '@/lib/useMe';
 import { colors } from '@/theme';
@@ -50,14 +51,14 @@ export default function GuardianHome() {
             <Pressable
               key={h.id}
               accessibilityRole="button"
-              accessibilityLabel={`${TIME_OF_DAY_LABELS[h.dose_event.slot.time_of_day]} 약, ${reasonTitle(h.reason)}. 자세히 보기`}
+              accessibilityLabel={`${doseName(h.dose_event)} 약, ${reasonTitle(h.reason)}. 자세히 보기`}
               onPress={() => router.push({ pathname: '/guardian/handoff/[id]', params: { id: h.id } })}
               style={({ pressed }) => [styles.card, pressed && { opacity: 0.7 }]}
             >
               {h.dose_event.is_simulated ? <SimulationTag /> : null}
               <T variant="title">! {reasonTitle(h.reason)}</T>
               <T>
-                {TIME_OF_DAY_LABELS[h.dose_event.slot.time_of_day]} 약 · {spokenTime(new Date(h.notified_at))} 알림
+                {doseName(h.dose_event)} 약 · {spokenTime(new Date(h.notified_at))} 알림
               </T>
               <T style={{ fontWeight: '700' }}>자세히 보기 ›</T>
             </Pressable>

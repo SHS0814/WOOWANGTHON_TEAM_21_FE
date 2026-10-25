@@ -7,7 +7,8 @@ import { RemotePhoto } from '@/components/RemotePhoto';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { goBackOr } from '@/lib/nav';
-import { spokenHHMM, spokenTime, TIME_OF_DAY_LABELS } from '@/lib/time';
+import { doseName } from '@/lib/doseLabel';
+import { spokenHHMM, spokenTime } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
 import { colors } from '@/theme';
 
@@ -27,15 +28,17 @@ export default function History() {
 }
 
 function Row({ ev }: { ev: DoseEvent }) {
-  const tod = TIME_OF_DAY_LABELS[ev.slot.time_of_day];
+  // 전날 건은 "어젯밤 자기 전"처럼 날짜를 붙인다 (R-021 Q-007)
+  const tod = doseName(ev);
   const photo = ev.photos[ev.photos.length - 1];
-  // 어르신 화면에는 "안 드셨어요"나 인계 사유를 보여주지 않는다 (2.5 표, 원칙 6)
+  // 기록 여부는 서버의 elder_status 만 따른다 (2.5 표). 늦은 정상 사진도 recorded 로 온다 (R-021 Q-004)
+  // 어르신 화면에는 "안 드셨어요"나 인계 사유를 보여주지 않는다 (원칙 6)
   if (ev.elder_status === 'recorded' && ev.taken_at) {
     return (
       <View style={styles.row} accessible accessibilityLabel={`${tod}, 기록 있음`}>
         <T variant="elderTitle">✓ {tod}</T>
         <T variant="elderBody">{spokenTime(new Date(ev.taken_at))}</T>
-        {ev.outcome_source === 'ai' && photo ? <RemotePhoto photo={photo} style={styles.photo} label={`${tod} 약통 사진`} size="elder" /> : null}
+        {photo ? <RemotePhoto photo={photo} style={styles.photo} label={`${tod} 약통 사진`} size="elder" /> : null}
         {ev.outcome_source === 'guardian' ? (
           <JudgeBadge kind="guardian" guardianName={ev.decided_by?.display_name} size="elder" />
         ) : (
