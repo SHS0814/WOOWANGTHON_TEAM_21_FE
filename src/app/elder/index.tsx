@@ -5,13 +5,18 @@ import { api } from '@/api';
 import { BigButton } from '@/components/BigButton';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
+import { AskView } from '@/components/AskView';
 import { doseName } from '@/lib/doseLabel';
+import { firstOpenDose } from '@/lib/openDose';
 import { longDate, spokenTime, TIME_OF_DAY_LABELS, weekdayLong } from '@/lib/time';
 import { POLL_MS, useApiData } from '@/lib/useApiData';
 import { useMe } from '@/lib/useMe';
 import { colors } from '@/theme';
 
-/** E3 대기 홈. 행동은 [나 약 먹었나?] 하나 */
+/**
+ * 어르신 홈. 열린 복약 건이 있으면 E3 대신 E4(사진 찍기 질문)를 바로 보여준다. 여러 개면 가장 이른 건부터 (R-022).
+ * 열린 건이 없으면 E3 대기 홈. 어느 쪽이든 행동은 하나다
+ */
 export default function ElderHome() {
   const { data: hasToken } = useApiData(() => api.hasToken());
   const { data: me } = useMe();
@@ -22,6 +27,17 @@ export default function ElderHome() {
   if (!hasToken) return <Redirect href="/elder/connect" />;
   if (!me) return null;
   if (me.consent_required) return <Redirect href="/elder/consent" />;
+
+  const open = today ? firstOpenDose(today.items) : undefined;
+  if (open) {
+    return (
+      <AskView
+        ev={open}
+        elderName={me.family.elder_display_name}
+        onTakePhoto={() => router.push({ pathname: '/elder/camera/[id]', params: { id: open.id } })}
+      />
+    );
+  }
 
   const now = new Date();
   // 3.17 next_event: 아직 scheduled 또는 asked 인 가장 이른 건. 전날 건(carried_over)이면 "다음 약"이 아니므로
