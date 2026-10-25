@@ -38,7 +38,7 @@ npx tsc --noEmit        # 타입 검사
 | 보호자 | 인계 푸시 | Expo 푸시 토큰을 `PUT /devices/me/push-token` 으로 등록. 누르면 `handoff_id` 로 G5 (`src/notify/guardianPush.ts`, `NotificationRouter.tsx`). G8 에 등록 상태 표시 |
 
 - Android: 높은 중요도 채널 `dose-ask` (알람 볼륨으로 울림, 잠금 화면에 내용 표시), 정시 전달 요청(`delivery: 'alarmClock'`)
-  - **정확한 알람 권한이 필요하다.** Android 14 부터 `SCHEDULE_EXACT_ALARM` 은 기본 거부라, 권한이 없으면 알림이 정해진 시각보다 몇 분 늦게 울릴 수 있다 (에뮬레이터 측정: 10분 뒤 알림의 허용 지연 창 +7분 29초, 권한을 주면 0). 어르신 폰을 연결할 때 보호자가 폰 설정 → 앱 → 알람 및 리마인더에서 켜야 한다. 앱 안 안내 화면은 아직 없다
+  - **정확한 알람 권한이 필요하다.** Android 14 부터 `SCHEDULE_EXACT_ALARM` 은 기본 거부라, 권한이 없으면 알림이 정해진 시각보다 몇 분 늦게 울릴 수 있다 (에뮬레이터 측정: 10분 뒤 알림의 허용 지연 창 +7분 29초, 권한을 주면 0). 어르신 폰 연결·동의 직후 권한이 없으면 앱이 안내 화면(`elder/alarm-permission`, [설정 열기] 하나)을 보여주고, 보호자가 켜고 돌아오면 자동으로 넘어간다 (R-025 1번)
 - iOS: 시간 민감 알림 (`interruptionLevel: 'timeSensitive'`, `app.json` 에 entitlement)
 - 웹: 알림 없음
 
@@ -59,6 +59,18 @@ npx tsc --noEmit        # 타입 검사
 - 필요한 것: `USE_FULL_SCREEN_INTENT` 권한, 알림에 `setFullScreenIntent(E4 를 여는 PendingIntent)`, E4 를 띄울 Activity 에 `showWhenLocked`·`turnScreenOn`
 - Android 14(API 34)부터 이 권한은 통화·알람 앱 외에는 기본 거부다. 앱이 `NotificationManager.canUseFullScreenIntent()` 로 확인하고, 안 되면 `Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT` 화면으로 보내 보호자가 대신 켜게 해야 한다 (UI 설계 4장의 안내 화면). Google Play 배포 시 권한 사용 신고가 필요하다
 - 방법: ① `@notifee/react-native` (fullScreenAction 지원, 마지막 릴리스 2024-12 라 RN 0.88·New Architecture 호환을 따로 확인해야 함) ② 작은 Expo 네이티브 모듈(Kotlin) + config plugin 으로 직접 구현. 유지보수 위험이 작은 ②를 권한다. 둘 다 개발 빌드가 필요하다
+
+## 배포 체크리스트
+
+배포(APK·EAS 빌드) 전에 확인한다.
+
+- [ ] **패키지 이름 바꾸기:** 지금은 기본값 `com.anonymous.woowangfe` 다 (`app.json` 에 `android.package`·`ios.bundleIdentifier` 가 없어서 생긴 이름). 배포용 이름을 정해 `app.json` 에 적는다. 한 번 배포한 뒤에는 바꾸기 어렵다 (R-025 4번)
+- [ ] **서버 주소:** `EXPO_PUBLIC_API_MODE=http`, `EXPO_PUBLIC_API_BASE_URL=https://<터널 도메인>/api/v1` (EAS 빌드면 EAS 환경 변수로). 값은 커밋하지 않는다
+- [ ] **원격 푸시:** EAS 프로젝트 id(`extra.eas.projectId`)와 FCM(Android)·APNs(iOS) 자격 증명. 사용자 결정 대기 (U-004). 없으면 보호자는 앱 안 목록과 30초 갱신으로만 인계를 본다
+- [ ] **Android 정확한 알람 권한:** `SCHEDULE_EXACT_ALARM` 을 쓴다. Google Play 에 올리면 권한 사용 신고가 필요하다. 어르신 폰 연결 때 앱이 안내 화면을 보여준다
+- [ ] **iOS 시간 민감 알림:** Apple 개발자 계정에서 Time Sensitive Notifications 기능을 켠다 (`app.json` entitlement)
+- [ ] **시연 가족:** 시연용이면 `EXPO_PUBLIC_CREATE_DEMO_FAMILY=true` 와 서버 `DEMO_MODE=true`. 심사용 접근 정보는 README 에 적지 않는다 (비공개 제출 폼)
+- [ ] **모의 표시:** 서버가 모의 판독이면 앱 상단 띠가 자동으로 보인다. 실제 AI 를 붙이면 띠가 사라지는지 확인한다
 
 ## 구조
 

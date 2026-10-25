@@ -6,6 +6,7 @@ import { BigButton } from '@/components/BigButton';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { guardianName, useMe } from '@/lib/useMe';
+import { needsExactAlarmPermission } from '@/notify/exactAlarm';
 import { colors } from '@/theme';
 
 /** E1 동의. 짝짓기 이후에 실제 보호자 이름으로 보여준다 (R-008 C1, C4, 원칙 8, api.md 3.5) */
@@ -20,7 +21,8 @@ export default function Consent() {
     setBusy(true);
     try {
       await api.consent({ agreed: true, consent_text_version: me.server.consent_text_version, ai_external_transfer_shown: external });
-      router.replace('/elder');
+      // Android 정확한 알람 권한이 없으면 안내 화면을 한 번 거친다 (R-025 1번)
+      router.replace((await needsExactAlarmPermission()) ? '/elder/alarm-permission' : '/elder');
     } catch {
       setFailed(true);
       setBusy(false);
