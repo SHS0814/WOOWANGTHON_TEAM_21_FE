@@ -44,16 +44,28 @@ export function setupNotifications(): Promise<void> {
   return ready ?? Promise.resolve();
 }
 
-/** 알림 권한. 이미 정했으면 다시 묻지 않는다 */
-export async function ensurePermission(): Promise<boolean> {
+let asking: Promise<boolean> | null = null;
+let askedThisSession = false;
+
+/**
+ * 알림 권한. 이미 정했으면 다시 묻지 않는다.
+ * 자동으로 묻는 것은 한 실행에 한 번뿐이다 (동의 화면과 알림 동기화가 동시에 물어 창이 두 번 뜨는 것을 막음).
+ * 거부된 뒤에는 안내 화면의 [설정 열기]로만 다시 묻는다 (R-028 N24)
+ */
+export function ensurePermission(): Promise<boolean> {
+  asking ??= askOnce().finally(() => {
+    asking = null;
+  });
+  return asking;
+}
+
+async function askOnce(): Promise<boolean> {
   if (!notificationsSupported) return false;
   await setupNotifications();
   const cur = await Notifications.getPermissionsAsync();
   if (cur.granted) return true;
-  if (!cur.canAskAgain) {
-    if (__DEV__) console.warn('[notify] 알림 권한을 다시 물을 수 없음');
-    return false;
-  }
+  if (askedThisSession || !cur.canAskAgain) return false;
+  askedThisSession = true;
   const res = await Notifications.requestPermissionsAsync({ ios: { allowAlert: true, allowSound: true, allowBadge: false } });
   if (__DEV__ && !res.granted) console.warn('[notify] 알림 권한 없음', res.status);
   return res.granted;

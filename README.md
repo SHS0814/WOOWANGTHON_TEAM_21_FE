@@ -33,13 +33,15 @@ npx tsc --noEmit        # 타입 검사
 
 | 폰 | 무엇 | 어떻게 |
 |---|---|---|
-| 어르신 | 복약 시각·재질문 로컬 알림 | `GET /dose-events/today` 의 `ask_times`(오늘)와 `GET /schedule` + `GET /me` `timing`(내일부터 3일치)으로 예약. 숫자는 서버 값. 사진을 올렸거나 끝난 건의 남은 알림은 취소 (`src/notify/elderSchedule.ts`) |
+| 어르신 | 복약 시각·재질문 로컬 알림 | `GET /dose-events/today` 의 `ask_times`(오늘)와 `GET /schedule` + `GET /me` `timing`(내일부터 7일치, 서울 시간 기준)으로 예약. 숫자는 서버 값. 사진을 올렸거나 끝난 건의 남은 알림은 취소 (`src/notify/elderSchedule.ts`, R-028 N18·N22) |
+| 어르신 | 재촬영·안내 뒤 사진이 없을 때 | 요청 5분 뒤 "사진 한 장만 더 부탁드려요" 1회. 복용 권유 문구 없음. 사진을 올리면 취소 (R-028 N25) |
 | 어르신 | 알림을 누르면 | 오늘 건 → E4, 미리 예약한 날 → 어르신 홈 (열린 건이 있으면 홈이 E4 를 보여줌, R-022) |
 | 보호자 | 인계 푸시 | Expo 푸시 토큰을 `PUT /devices/me/push-token` 으로 등록. 누르면 `handoff_id` 로 G5 (`src/notify/guardianPush.ts`, `NotificationRouter.tsx`). G8 에 등록 상태 표시 |
 
 - Android: 높은 중요도 채널 `dose-ask` (알람 볼륨으로 울림, 잠금 화면에 내용 표시), 정시 전달 요청(`delivery: 'alarmClock'`)
   - **정확한 알람 권한이 필요하다.** Android 14 부터 `SCHEDULE_EXACT_ALARM` 은 기본 거부라, 권한이 없으면 알림이 정해진 시각보다 몇 분 늦게 울릴 수 있다 (에뮬레이터 측정: 10분 뒤 알림의 허용 지연 창 +7분 29초, 권한을 주면 0). 어르신 폰 연결·동의 직후 권한이 없으면 앱이 안내 화면(`elder/alarm-permission`, [설정 열기] 하나)을 보여주고, 보호자가 켜고 돌아오면 자동으로 넘어간다 (R-025 1번)
-- iOS: 시간 민감 알림 (`interruptionLevel: 'timeSensitive'`, `app.json` 에 entitlement)
+- iOS: 시간 민감 알림 (`interruptionLevel: 'timeSensitive'`, `app.json` 에 entitlement). 대기 알림 한도(64개) 때문에 가까운 순 60개까지 예약한다
+- 알림 권한: 동의 직후 한 번 묻는다. 거부했거나 정확한 알람 권한이 없으면 같은 안내 화면이 켜야 할 것을 하나씩 연다 (R-028 N24)
 - 웹: 알림 없음
 
 ### Expo Go 와 개발 빌드

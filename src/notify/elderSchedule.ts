@@ -7,15 +7,21 @@ import { Platform } from 'react-native';
 
 import type { DoseEvent, Me, Schedule, TodayResponse } from '@/api';
 import { doseName } from '@/lib/doseLabel';
-import { dateKey, mondayIndex, TIME_OF_DAY_LABELS } from '@/lib/time';
+import { seoulDay, seoulInstant } from '@/lib/seoulTime';
+import { TIME_OF_DAY_LABELS } from '@/lib/time';
 import { DOSE_CHANNEL, ensurePermission, notificationsSupported } from '@/notify/channels';
 import { Notifications } from '@/notify/module';
 
 /** 이 앱이 만든 복약 알림 식별자 접두어. 다른 알림은 건드리지 않는다 */
 const PREFIX = 'dose:';
-/** 미리 예약하는 날 수 (오늘 제외). iOS 는 예약 알림이 64개까지라 그 안에 들게 줄인다 */
-const DAYS_AHEAD = 3;
+/**
+ * 미리 예약하는 날 수 (오늘 제외). 앱을 오래 열지 않아도 알림이 이어지게 7일 (R-028 N18).
+ * iOS 는 대기 알림이 64개까지라 가까운 순으로 60개만 남긴다 (재촬영 알림 몫으로 여유를 둔다)
+ */
+const DAYS_AHEAD = 7;
 const IOS_PENDING_LIMIT = 60;
+/** 재촬영·안내를 요청한 뒤 사진이 없으면 한 번 더 알리는 시각 (R-028 N25) */
+const RETAKE_NUDGE_MIN = 5;
 
 export interface DoseNotificationData {
   type: 'dose_ask';
@@ -41,6 +47,28 @@ function texts(elder: string, name: string, reask: boolean, simulated: boolean) 
   };
 }
 
+/**
+ * 재촬영(retake_requested)·안내(reminded) 뒤 5분 안에 사진이 없으면 1회 (R-028 N25).
+ * 요청 시각 = retake_deadline_at - 서버 retake_wait_min. 사진을 올리면 상태가 바뀌어 다음 동기화에서 취소된다.
+ * 복용을 권하는 말은 쓰지 않는다 (원칙 6)
+ */
+function planRetakeNudge(ev: DoseEvent, me: Me, elder: string, now: number): Planned[] {
+  if ((ev.state !== 'retake_requested' && ev.state !== 'reminded') || !ev.retake_deadline_at) return [];
+  const deadline = new Date(ev.retake_deadline_at).getTime();
+  const at = deadline - (me.server.timing.retake_wait_min - RETAKE_NUDGE_MIN) * 60_000;
+  if (at <= now || at >= deadline) return [];
+  const sim = ev.is_simulated ? '[시뮬레이션] ' : '';
+  return [
+    {
+      id: `${PREFIX}${ev.id}:retake`,
+      at: new Date(at),
+      title: `${sim}사진 한 장만 더 부탁드려요`,
+      body: `${elder}, 약통 사진 한 장만 더 찍어주실래요?`,
+      data: { type: 'dose_ask', event_id: ev.id },
+    },
+  ];
+}
+
 /** 오늘 건: 아직 물어보는 중(scheduled·asked)인 건만. 그 밖의 상태면 남은 재질문은 없다 */
 function planToday(ev: DoseEvent, elder: string, now: number): Planned[] {
   if (ev.carried_over || (ev.state !== 'scheduled' && ev.state !== 'asked')) return [];
@@ -56,22 +84,21 @@ function planToday(ev: DoseEvent, elder: string, now: number): Planned[] {
     }));
 }
 
-/** 내일부터: 일정과 서버 timing 으로 계산 (오늘 건은 서버가 만든 것을 쓴다) */
+/**
+ * 내일부터: 일정과 서버 timing 으로 계산 (오늘 건은 서버가 만든 것을 쓴다).
+ * 요일과 시각은 기기 시간대가 아니라 서울 기준으로 계산한다 (R-028 N22)
+ */
 function planAhead(schedule: Schedule, me: Me, elder: string, now: Date): Planned[] {
   const offsets = [0, ...me.server.timing.reask_offsets_min];
   const out: Planned[] = [];
   for (let d = 1; d <= DAYS_AHEAD; d++) {
-    const day = new Date(now);
-    day.setDate(day.getDate() + d);
-    const wd = mondayIndex(day);
-    for (const slot of schedule.slots.filter((s) => s.weekday === wd)) {
-      const [h, m] = slot.dose_time.split(':').map(Number);
-      const base = new Date(day);
-      base.setHours(h, m, 0, 0);
+    const day = seoulDay(now, d);
+    for (const slot of schedule.slots.filter((s) => s.weekday === day.weekday)) {
+      const base = seoulInstant(day, slot.dose_time);
       const name = TIME_OF_DAY_LABELS[slot.time_of_day];
       offsets.forEach((off, i) => {
         out.push({
-          id: `${PREFIX}${slot.id}@${dateKey(day)}:${i}`,
+          id: `${PREFIX}${slot.id}@${day.key}:${i}`,
           at: new Date(base.getTime() + off * 60_000),
           ...texts(elder, name, i > 0, false),
           data: { type: 'dose_ask', event_id: null },
@@ -109,7 +136,10 @@ async function syncOnce(today: TodayResponse, schedule: Schedule, me: Me) {
   if (!(await ensurePermission())) return;
   const now = new Date();
   const elder = me.family.elder_display_name;
-  let wanted = [...today.items.flatMap((ev) => planToday(ev, elder, now.getTime())), ...planAhead(schedule, me, elder, now)]
+  let wanted = [
+    ...today.items.flatMap((ev) => [...planToday(ev, elder, now.getTime()), ...planRetakeNudge(ev, me, elder, now.getTime())]),
+    ...planAhead(schedule, me, elder, now),
+  ]
     .filter((p) => p.at.getTime() > now.getTime())
     .sort((a, b) => a.at.getTime() - b.at.getTime());
   if (Platform.OS === 'ios') wanted = wanted.slice(0, IOS_PENDING_LIMIT);
