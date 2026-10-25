@@ -7,7 +7,7 @@ import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { AskView } from '@/components/AskView';
 import { doseName } from '@/lib/doseLabel';
-import { firstOpenDose } from '@/lib/openDose';
+import { canSendLatePhoto, firstOpenDose } from '@/lib/openDose';
 import { longDate, spokenTime, TIME_OF_DAY_LABELS, weekdayLong } from '@/lib/time';
 import { POLL_MS, useApiData } from '@/lib/useApiData';
 import { useMe } from '@/lib/useMe';
@@ -48,8 +48,9 @@ export default function ElderHome() {
   const next = nextIsCarried
     ? nextItem && { id: nextItem.id, scheduled_at: nextItem.scheduled_at, time_of_day: nextItem.slot.time_of_day }
     : today?.next_event;
-  // 전날 끝나지 않은 건은 날짜를 붙여 따로 알려준다. 지시하는 말은 하지 않는다 (원칙 6)
-  const carried = items.filter((e) => e.carried_over && e.elder_status !== 'recorded');
+  // 물어보는 시간이 지났지만 늦은 사진을 받는 건(오늘 무응답 인계, 전날 건)은 E8 에서 올린다고 알려준다 (R-026 Q-009).
+  // 복용을 권하지 않는다 (원칙 6)
+  const late = items.filter((e) => canSendLatePhoto(e));
 
   return (
     <Screen center footer={<BigButton label="나 약 먹었나?" onPress={() => router.push('/elder/history')} />}>
@@ -73,11 +74,16 @@ export default function ElderHome() {
             오늘 남은 약 시간은 없어요.
           </T>
         ) : null}
-        {carried.map((e) => (
+        {late.map((e) => (
           <T key={e.id} variant="elderBody" style={{ textAlign: 'center', marginTop: 12 }}>
             {doseName(e)} 약은 아직 기록이 없어요.
           </T>
         ))}
+        {late.length ? (
+          <T variant="elderBody" style={{ textAlign: 'center', marginTop: 8 }}>
+            드셨으면 [나 약 먹었나?]에서 사진을 찍어 주세요.
+          </T>
+        ) : null}
       </View>
     </Screen>
   );

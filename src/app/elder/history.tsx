@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { api, type DoseEvent } from '@/api';
@@ -8,6 +9,7 @@ import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { goBackOr } from '@/lib/nav';
 import { doseName } from '@/lib/doseLabel';
+import { canSendLatePhoto } from '@/lib/openDose';
 import { spokenHHMM, spokenTime } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
 import { colors } from '@/theme';
@@ -45,6 +47,22 @@ function Row({ ev }: { ev: DoseEvent }) {
           <JudgeBadge kind="ai" isMock={ev.is_mock} size="elder" />
         )}
         {ev.is_simulated ? <T variant="elderBody">시뮬레이션</T> : null}
+      </View>
+    );
+  }
+  // 늦은 사진: 물어보는 시간이 지났지만 서버가 사진을 받는 건은 이 줄에서 올린다 (R-026 Q-009).
+  // 복용을 권하지 않고 기록만 요청한다. "약 드실 시간이에요" 같은 말은 쓰지 않는다 (원칙 6, R-007 C3)
+  if (canSendLatePhoto(ev)) {
+    return (
+      <View style={styles.row}>
+        <T variant="elderTitle">– {tod}</T>
+        <T variant="elderBody">아직 기록이 없어요</T>
+        <T variant="elderBody">드셨으면 약통 사진을 찍어 주세요.</T>
+        <BigButton
+          label="사진 찍기"
+          variant="secondary"
+          onPress={() => router.push({ pathname: '/elder/camera/[id]', params: { id: ev.id } })}
+        />
       </View>
     );
   }

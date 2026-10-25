@@ -14,11 +14,11 @@ export function mondayIndex(d: Date): number {
   return (d.getDay() + 6) % 7;
 }
 
-/** "8시 12분", "오후 7시" 같은 말하기 좋은 시각 */
+/** "오전 8시 12분", "오후 7시" 같은 말하기 좋은 시각. 0시는 "밤 12시", 12시는 "낮 12시" (R-026 Q-010) */
 export function spokenTime(d: Date): string {
   const h = d.getHours();
   const m = d.getMinutes();
-  const half = h < 12 ? '오전' : '오후';
+  const half = h === 0 ? '밤' : h === 12 ? '낮' : h < 12 ? '오전' : '오후';
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return m === 0 ? `${half} ${h12}시` : `${half} ${h12}시 ${m}분`;
 }
