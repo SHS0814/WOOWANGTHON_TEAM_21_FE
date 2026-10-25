@@ -8,6 +8,7 @@ import { BigButton } from '@/components/BigButton';
 import { Field } from '@/components/Field';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
+import { spokenTime } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
 import { colors } from '@/theme';
 
@@ -76,7 +77,7 @@ export default function Connect() {
           </>
         ) : null}
         <T variant="small" style={{ color: colors.subtle }}>
-          {until.getHours()}시 {`${until.getMinutes()}`.padStart(2, '0')}분까지, 한 번만 쓸 수 있어요.
+          {spokenTime(until)}까지, 한 번만 쓸 수 있어요.
         </T>
         <BigButton size="guardian" variant="secondary" label="새 코드 받기" onPress={issue} />
         <T variant="small" style={{ color: colors.subtle }}>

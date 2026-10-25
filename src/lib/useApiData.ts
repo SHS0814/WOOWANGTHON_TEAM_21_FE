@@ -1,5 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
 import { api } from '@/api';
 
@@ -43,6 +44,11 @@ export function useApiData<T>(fetcher: () => Promise<T>, deps: unknown[] = [], o
     }, [pollMs, reload]),
   );
   useEffect(() => api.subscribe(() => void reload()), [reload]);
+  // 앱이 백그라운드에서 앞으로 오면 다시 읽는다 (일정 변경·서버 반영을 바로 받으려고, R-032 Q-012)
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => s === 'active' && void reload());
+    return () => sub.remove();
+  }, [reload]);
 
   return { data, error, reload };
 }

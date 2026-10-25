@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
-import { api } from '@/api';
+import { api, type Schedule } from '@/api';
 import { POLL_MS, useApiData } from '@/lib/useApiData';
 import { syncElderNotifications } from '@/notify/elderSchedule';
 
@@ -9,7 +9,12 @@ export function ElderNotificationSync() {
   const { data: me } = useApiData(() => api.me().catch(() => null));
   const ok = !!me && !me.consent_required;
   const { data: today } = useApiData(() => (ok ? api.today().catch(() => null) : Promise.resolve(null)), [ok], { pollMs: POLL_MS });
-  const { data: schedule } = useApiData(() => (ok ? api.schedule().catch(() => null) : Promise.resolve(null)), [ok]);
+  // 일정도 오늘 목록과 같은 주기로 읽는다. updated_at 이 바뀌었을 때만 7일치를 다시 맞춘다 (R-032 Q-012)
+  const { data: fetched } = useApiData(() => (ok ? api.schedule().catch(() => null) : Promise.resolve(null)), [ok], { pollMs: POLL_MS });
+  const [schedule, setSchedule] = useState<Schedule | null>(null);
+  useEffect(() => {
+    if (fetched && (!schedule || fetched.updated_at !== schedule.updated_at || fetched.pillbox_id !== schedule.pillbox_id)) setSchedule(fetched);
+  }, [fetched, schedule]);
 
   useEffect(() => {
     if (me && today && schedule)

@@ -109,6 +109,9 @@ function planAhead(schedule: Schedule, me: Me, elder: string, now: Date): Planne
   return out;
 }
 
+/** 이번 실행에서 예약한 알림의 시각·문구. 앱을 새로 열면 비어 있어 처음 한 번은 모두 다시 예약한다 */
+const scheduledThisSession = new Map<string, string>();
+
 let running: Promise<void> | null = null;
 let pendingArgs: [TodayResponse, Schedule, Me] | null = null;
 
@@ -146,10 +149,17 @@ async function syncOnce(today: TodayResponse, schedule: Schedule, me: Me) {
 
   const existing = (await Notifications.getAllScheduledNotificationsAsync()).filter((n) => n.identifier.startsWith(PREFIX));
   const wantedIds = new Set(wanted.map((w) => w.id));
-  // 끝난 건·바뀐 일정의 알림 취소 (사진을 올리면 남은 재질문이 여기서 지워진다)
-  await Promise.all(existing.filter((n) => !wantedIds.has(n.identifier)).map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
-  // 같은 식별자로 다시 예약하면 덮어쓴다 → 시각이 바뀐 건(일정 변경, 시연 트리거)도 맞춰진다
+  // 끝난 건·지운 칸·바뀐 일정의 알림 취소 (사진을 올리면 남은 재질문이 여기서 지워진다, R-032 Q-012)
+  const stale = existing.filter((n) => !wantedIds.has(n.identifier));
+  await Promise.all(stale.map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
+  stale.forEach((n) => scheduledThisSession.delete(n.identifier));
+  // 이번 실행에서 같은 내용으로 이미 예약한 것은 건너뛴다. 같은 식별자로 다시 예약하면 덮어쓰므로
+  // 시각·문구가 바뀐 건(일정 변경, 시연 트리거)은 여기서 다시 맞춰진다
+  const existingIds = new Set(existing.map((n) => n.identifier));
   for (const p of wanted) {
+    const sig = `${p.at.getTime()}|${p.title}|${p.body}`;
+    if (existingIds.has(p.id) && scheduledThisSession.get(p.id) === sig) continue;
+    scheduledThisSession.set(p.id, sig);
     await Notifications.scheduleNotificationAsync({
       identifier: p.id,
       content: {
@@ -177,4 +187,5 @@ export async function clearElderNotifications(): Promise<void> {
   if (!notificationsSupported) return;
   const all = await Notifications.getAllScheduledNotificationsAsync();
   await Promise.all(all.filter((n) => n.identifier.startsWith(PREFIX)).map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
+  scheduledThisSession.clear();
 }

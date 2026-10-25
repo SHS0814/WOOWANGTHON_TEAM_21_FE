@@ -6,7 +6,7 @@ import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { reasonTitle, VERDICT_LABEL } from '@/lib/handoff';
 import { doseName } from '@/lib/doseLabel';
-import { dateKey, mondayIndex, spokenTime, WEEKDAY_LABELS } from '@/lib/time';
+import { dateKey, shortDateOfKey, spokenTime } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
 import { colors } from '@/theme';
 
@@ -66,9 +66,9 @@ function Flags({ s }: { s: Summary }) {
 }
 
 function DayRow({ s }: { s: Summary }) {
-  const date = new Date(`${s.period_start}T00:00:00`);
   const c = s.counts;
-  const label = `${date.getMonth() + 1}/${date.getDate()} (${WEEKDAY_LABELS[mondayIndex(date)]})`;
+  // 서버 날짜(서울)를 기기 시간대로 해석하지 않는다 (R-032 Q-013)
+  const label = shortDateOfKey(s.period_start);
   if (c.scheduled === 0) {
     return (
       <View style={styles.row}>

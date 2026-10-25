@@ -27,3 +27,15 @@ export function seoulInstant(day: SeoulDay, hhmm: string): Date {
   const [h, min] = hhmm.split(':').map(Number);
   return new Date(Date.UTC(day.y, day.m, day.d, h, min) - SEOUL_OFFSET_MS);
 }
+
+/** 그 순간의 서울 시·분 */
+export function seoulClock(d: Date): { h: number; min: number } {
+  const t = new Date(d.getTime() + SEOUL_OFFSET_MS);
+  return { h: t.getUTCHours(), min: t.getUTCMinutes() };
+}
+
+/** "YYYY-MM-DD"(서울 날짜) 의 월·일·요일. 기기 시간대로 해석하지 않는다 */
+export function seoulDayOfKey(key: string): SeoulDay {
+  const [y, m, d] = key.split('-').map(Number);
+  return seoulDay(new Date(Date.UTC(y, m - 1, d, 12) - SEOUL_OFFSET_MS));
+}
