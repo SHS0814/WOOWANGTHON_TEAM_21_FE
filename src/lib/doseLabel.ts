@@ -16,8 +16,3 @@ export function doseName(ev: Pick<DoseEvent, 'date' | 'slot'>, today = new Date(
   const [, m, d] = ev.date.split('-').map(Number);
   return `${m}월 ${d}일 ${tod}`;
 }
-
-/** 오늘 날짜가 아닌 건인지 (서버가 carried_over 로 알려준다) */
-export function isEarlierDay(ev: Pick<DoseEvent, 'carried_over'>): boolean {
-  return ev.carried_over;
-}
