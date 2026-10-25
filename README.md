@@ -62,6 +62,45 @@ npx tsc --noEmit        # 타입 검사
 - Android 14(API 34)부터 이 권한은 통화·알람 앱 외에는 기본 거부다. 앱이 `NotificationManager.canUseFullScreenIntent()` 로 확인하고, 안 되면 `Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT` 화면으로 보내 보호자가 대신 켜게 해야 한다 (UI 설계 4장의 안내 화면). Google Play 배포 시 권한 사용 신고가 필요하다
 - 방법: ① `@notifee/react-native` (fullScreenAction 지원, 마지막 릴리스 2024-12 라 RN 0.88·New Architecture 호환을 따로 확인해야 함) ② 작은 Expo 네이티브 모듈(Kotlin) + config plugin 으로 직접 구현. 유지보수 위험이 작은 ②를 권한다. 둘 다 개발 빌드가 필요하다
 
+## 개발 빌드로 실행하기 (Android, 알림 확인용)
+
+알림은 Expo Go 에서 확인할 수 없다 (위 표). 로컬 개발 빌드로 에뮬레이터나 실제 폰에서 확인한다.
+
+### 준비
+- Android SDK (Android Studio 설치 시 `~/Library/Android/sdk`), JDK 17 이상, `adb`
+- `export ANDROID_HOME=~/Library/Android/sdk`
+- 에뮬레이터: `~/Library/Android/sdk/emulator/emulator -list-avds` 로 이름 확인 → `emulator -avd <이름>` (창 없이: `-no-window -no-audio`). 부팅 확인: `adb shell getprop sys.boot_completed` 가 `1`
+
+### 빌드와 실행
+```bash
+npx expo run:android            # 처음 한 번 (약 10분). NDK·CMake·Build-Tools 를 자동으로 받는다
+                                # android/ 폴더가 생기지만 .gitignore 대상이다. 커밋하지 않는다
+npx expo start --dev-client     # 그다음부터는 JS 만 다시 불러온다 (네이티브 설정을 바꿨을 때만 다시 빌드)
+```
+- 앱을 처음 열면 "주변 기기" 권한을 묻는다 (개발 빌드가 Metro 를 찾는 데 씀). 허용한다
+- Metro 에 직접 붙이기: `adb shell am start -a android.intent.action.VIEW -d "woowang://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8081"`
+- 앱 화면 바로 열기 (예: 안내 화면): `adb shell am start -a android.intent.action.VIEW -d "woowang://elder/alarm-permission" com.anonymous.woowangfe`
+- 다시 불러오기: `adb shell input keyevent 82` → Reload
+
+### 로컬 서버(BE)에 붙이기
+- 에뮬레이터에서 내 PC 는 `10.0.2.2` 다: `EXPO_PUBLIC_API_MODE=http EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:8000/api/v1 npx expo start --dev-client`
+- 서버 `.env` 의 `PUBLIC_BASE_URL=http://10.0.2.2:8000` (사진 URL 이 에뮬레이터에서 열리게). 시연 트리거·모의 시나리오는 `DEMO_MODE=true` + 시연 가족(`EXPO_PUBLIC_CREATE_DEMO_FAMILY=true`)
+- 휴대폰 앱은 CORS 와 무관하다 (웹에서만 필요)
+
+### 알림 확인에 쓰는 명령 (시험용)
+| 무엇 | 명령 |
+|---|---|
+| 정확한 알람 권한 켜기/끄기 | `adb shell appops set com.anonymous.woowangfe SCHEDULE_EXACT_ALARM allow` (끄기: `--uid ... default`). **끄면 Android 가 앱 프로세스를 종료한다** |
+| 예약된 알림(알람) 보기 | `adb shell dumpsys alarm \| grep -A8 com.anonymous.woowangfe \| grep origWhen` (`window=0` 이면 정시, `window=+7m…` 이면 정확한 알람 권한 없음) |
+| 표시된 알림 보기 | `adb shell dumpsys notification --noredact \| grep -A30 "pkg=com.anonymous.woowangfe" \| grep -E "tag=\|android.title"` |
+| 알림 채널 설정 보기 | `adb shell dumpsys notification --noredact \| grep "dose-ask"` (중요도 5, `USAGE_ALARM`) |
+| 알림 창 열기 | `adb shell cmd statusbar expand-notifications` |
+| 앱 데이터 지우기 (처음부터) | `adb shell pm clear com.anonymous.woowangfe` (권한도 초기화) |
+| 기기 시간대 바꾸기 (N22) | `adb shell settings put global auto_time_zone 0; adb shell service call alarm 3 s16 America/Los_Angeles` (되돌리기: `Asia/Seoul`) |
+
+- 모의 서버에서는 개발 도구의 "시뮬레이션"으로 지금 시각의 복약 건을 열고, 재질문 알림(+10분)을 기다려 누르면 E4 로 가는지 본다. 재촬영 알림은 "애매" 시나리오로 사진을 올린 뒤 5분
+- Android 13+ 는 알림 권한을 두 번 거부하면 창을 더 띄우지 않는다. 다시 시험하려면 `pm clear`
+
 ## 배포 체크리스트
 
 배포(APK·EAS 빌드) 전에 확인한다.
