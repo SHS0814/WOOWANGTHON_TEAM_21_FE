@@ -22,22 +22,35 @@ export default function GuardianHome() {
   const { data: open } = useApiData(() => api.handoffs('open').catch(() => null), [], { pollMs: POLL_MS });
   const { data: day } = useApiData(() => api.summaries('day', dateKey(new Date()), dateKey(new Date())).catch(() => null), [], { pollMs: POLL_MS });
   const { data: box } = useApiData(() => api.currentPillbox().catch(() => null));
+  // 어르신 폰 알림 준비가 안 됐을 때만 한 줄 (R-032, 원칙 2: 정상이면 아무것도 안 보인다)
+  const { data: today } = useApiData(() => api.today().catch(() => null), [], { pollMs: POLL_MS });
 
   if (hasToken === undefined) return null;
   if (!hasToken) return <Redirect href="/guardian/connect" />;
   if (!me) return null;
 
-  const today = day?.[day.length - 1];
-  const c = today?.counts;
+  const summary = day?.[day.length - 1];
+  const c = summary?.counts;
   const taken = c ? c.taken_ai + c.taken_guardian : 0;
-  const statusLine = !today
+  const statusLine = !summary
     ? null
-    : today.all_normal
+    : summary.all_normal
       ? `✓ 오늘 ${c!.scheduled}번 모두 정상`
       : `오늘 ${c!.scheduled}번 중 ${taken}번 기록${c!.open_handoffs ? `, 처리할 일 ${c!.open_handoffs}건` : ''}${c!.pending ? `, ${c!.pending}번 남음` : ''}`;
 
   return (
     <Screen scroll>
+      {today?.elder_notification_warning ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="어르신 폰 알림 설정이 꺼져 있어 알림이 늦을 수 있어요. 무엇을 켜야 하는지 보기"
+          onPress={() => router.push('/guardian/settings')}
+          style={({ pressed }) => [styles.warn, pressed && { opacity: 0.7 }]}
+        >
+          <T style={{ fontWeight: '700' }}>! 어르신 폰 알림 설정이 꺼져 있어 알림이 늦을 수 있어요</T>
+          <T variant="small">무엇을 켜야 하는지 보기 ›</T>
+        </Pressable>
+      ) : null}
       {!me.family.has_pillbox ? (
         <BigButton size="guardian" label="약통 등록하기" onPress={() => router.push('/guardian/pillbox')} />
       ) : !me.family.has_schedule ? (
@@ -67,9 +80,9 @@ export default function GuardianHome() {
       ) : null}
 
       {statusLine ? <T variant="title">{statusLine}</T> : null}
-      {today?.includes_mock || today?.includes_simulated ? (
+      {summary?.includes_mock || summary?.includes_simulated ? (
         <T variant="small" style={{ color: colors.mockBg }}>
-          {[today.includes_mock && '모의 결과 포함', today.includes_simulated && '시뮬레이션 포함'].filter(Boolean).join(' · ')}
+          {[summary.includes_mock && '모의 결과 포함', summary.includes_simulated && '시뮬레이션 포함'].filter(Boolean).join(' · ')}
         </T>
       ) : null}
       {box?.refill_status.needs_refill ? (
@@ -88,5 +101,6 @@ export default function GuardianHome() {
 }
 
 const styles = StyleSheet.create({
+  warn: { borderWidth: 2, borderColor: colors.attention, backgroundColor: colors.attentionBg, borderRadius: 12, padding: 12, gap: 4 },
   card: { borderWidth: 3, borderColor: colors.attention, backgroundColor: colors.attentionBg, borderRadius: 16, padding: 16, gap: 6 },
 });

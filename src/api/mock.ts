@@ -24,6 +24,8 @@ import type {
   LocalPhoto,
   Me,
   MockScenario,
+  NotificationStatus,
+  NotificationStatusReport,
   PairRequest,
   PersonRef,
   Photo,
@@ -257,7 +259,7 @@ class MockApi implements Api {
   }
 
   private newDevice(role: Role, name: string): Device {
-    return { id: this.id(`d-${role}`), role, display_name: name, platform: null, paired_at: iso(new Date()), consent_at: null, last_seen_at: null, is_me: true };
+    return { id: this.id(`d-${role}`), role, display_name: name, platform: null, paired_at: iso(new Date()), consent_at: null, last_seen_at: null, is_me: true, notification_status: null };
   }
 
   // ---- 3.1 ~ 3.9 ----
@@ -368,6 +370,20 @@ class MockApi implements Api {
     else if (s.guardian?.id === id) throw new ApiError(409, 'last_guardian', '모의: 마지막 보호자');
     else throw new ApiError(404, 'not_found', '모의');
     await this.commit();
+  }
+
+  /** 3.29: 동의 전에도 받는다. ready 는 서버가 계산한다 */
+  async putNotificationStatus(report: NotificationStatusReport): Promise<NotificationStatus> {
+    await this.ready();
+    const me = this.myDevice();
+    if (!me) throw new ApiError(401, 'unauthorized', '모의');
+    me.notification_status = {
+      ...report,
+      ready: report.notifications_allowed && report.exact_alarm_allowed !== false,
+      reported_at: iso(new Date()),
+    };
+    await this.commit();
+    return copy(me.notification_status);
   }
 
   async putPushToken() {
@@ -612,6 +628,8 @@ class MockApi implements Api {
       date: s.eventsDate,
       items: s.events.map((e) => this.view(e)),
       open_handoff_count: this.role === 'guardian' ? s.handoffs.filter((h) => !h.verdict).length : null,
+      // 아직 보고가 없으면 경고하지 않는다 (3.17)
+      elder_notification_warning: this.role === 'guardian' ? s.elder?.notification_status?.ready === false : null,
       next_event: next ? { id: next.id, scheduled_at: next.scheduled_at, time_of_day: next.slot.time_of_day } : null,
     };
   }

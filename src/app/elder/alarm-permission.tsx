@@ -6,6 +6,7 @@ import { BigButton } from '@/components/BigButton';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { elderSetupNeeds, fixNextSetup, needsAnySetup, type SetupNeeds } from '@/notify/elderSetup';
+import { reportNotificationStatus } from '@/notify/statusReport';
 
 /**
  * 알림 준비 안내 (R-025 1번, R-028 N24). 어르신 폰 연결·동의 직후, 켜야 할 것이 있을 때만 나온다.
@@ -18,6 +19,8 @@ export default function AlarmPermission() {
   const [needs, setNeeds] = useState<SetupNeeds | null>(null);
 
   const check = useCallback(async () => {
+    // 권한 안내·설정 화면에서 돌아온 직후에도 서버에 보고한다 (3.29, R-032)
+    void reportNotificationStatus();
     const n = await elderSetupNeeds();
     if (!needsAnySetup(n)) router.replace('/elder');
     else setNeeds(n);

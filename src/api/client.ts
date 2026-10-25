@@ -15,6 +15,8 @@ import type {
   Me,
   MockScenario,
   MockScenarioResponse,
+  NotificationStatus,
+  NotificationStatusReport,
   PairingCode,
   PairRequest,
   PairResponse,
@@ -64,6 +66,7 @@ export interface Api {
   /** 3.7 */ devices(): Promise<Device[]>;
   /** 3.8 내 기기를 해제하면 토큰도 지운다 */ deleteDevice(id: string): Promise<void>;
   /** 3.9 */ putPushToken(pushToken: string | null): Promise<void>;
+  /** 3.29 알림 준비 상태 보고 */ putNotificationStatus(report: NotificationStatusReport): Promise<NotificationStatus>;
   /** 3.10 */ detectPillbox(photo: LocalPhoto): Promise<DetectResponse>;
   /** 3.11 */ createPillbox(req: { photo_id: string; layout: Layout }): Promise<{ pillbox: Pillbox; refill: Refill }>;
   /** 3.12 약통이 없으면 ApiError(404, pillbox_required) */ currentPillbox(): Promise<PillboxCurrent>;

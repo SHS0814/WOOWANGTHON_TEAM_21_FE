@@ -21,6 +21,8 @@ import type {
   Me,
   MockScenario,
   MockScenarioResponse,
+  NotificationStatus,
+  NotificationStatusReport,
   PairingCode,
   PairRequest,
   PairResponse,
@@ -181,6 +183,10 @@ class HttpApi implements Api {
 
   putPushToken(pushToken: string | null) {
     return this.request<void>('/devices/me/push-token', { method: 'PUT', body: { push_token: pushToken } });
+  }
+
+  putNotificationStatus(report: NotificationStatusReport) {
+    return this.request<NotificationStatus>('/devices/me/notification-status', { method: 'PUT', body: report });
   }
 
   async detectPillbox(photo: LocalPhoto) {

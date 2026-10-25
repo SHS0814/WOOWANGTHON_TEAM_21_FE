@@ -134,7 +134,21 @@ export interface Device {
   consent_at: string | null;
   last_seen_at: string | null;
   is_me: boolean;
+  /** 앱이 보고하기 전이면 null (3.29, R-032) */
+  notification_status: NotificationStatus | null;
 }
+
+/** 기기 알림 준비 상태 (2.7, 3.29) */
+export interface NotificationStatus {
+  notifications_allowed: boolean;
+  /** Android 12+ 정확한 알람 권한. iOS·Android 11 이하처럼 해당 없으면 null */
+  exact_alarm_allowed: boolean | null;
+  /** notifications_allowed && exact_alarm_allowed !== false (서버가 계산) */
+  ready: boolean;
+  reported_at: string;
+}
+
+export type NotificationStatusReport = Pick<NotificationStatus, 'notifications_allowed' | 'exact_alarm_allowed'>;
 
 // ---- 3장 요청·응답 ----
 
@@ -279,6 +293,8 @@ export interface TodayResponse {
   items: DoseEvent[];
   /** 보호자만. 어르신은 null */
   open_handoff_count: number | null;
+  /** 보호자만. 어르신 기기 알림 준비가 안 됐으면 true → G4 한 줄 (R-032). 어르신은 null */
+  elder_notification_warning: boolean | null;
   next_event: { id: string; scheduled_at: string; time_of_day: TimeOfDay } | null;
 }
 

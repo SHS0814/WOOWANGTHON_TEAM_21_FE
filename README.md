@@ -36,6 +36,8 @@ npx tsc --noEmit        # 타입 검사
 | 어르신 | 복약 시각·재질문 로컬 알림 | `GET /dose-events/today` 의 `ask_times`(오늘)와 `GET /schedule` + `GET /me` `timing`(내일부터 7일치, 서울 시간 기준)으로 예약. 숫자는 서버 값. 사진을 올렸거나 끝난 건의 남은 알림은 취소 (`src/notify/elderSchedule.ts`, R-028 N18·N22) |
 | 어르신 | 재촬영·안내 뒤 사진이 없을 때 | 요청 5분 뒤 "사진 한 장만 더 부탁드려요" 1회. 복용 권유 문구 없음. 사진을 올리면 취소 (R-028 N25) |
 | 어르신 | 알림을 누르면 | 오늘 건 → E4, 미리 예약한 날 → 어르신 홈 (열린 건이 있으면 홈이 E4 를 보여줌, R-022) |
+| 어르신 | 알림 준비 상태 보고 | 알림 권한·정확한 알람 권한을 앱 시작, 앞으로 올 때, 권한 화면에서 돌아온 직후 `PUT /devices/me/notification-status` 로 보고. 일정(`GET /schedule`)도 30초마다 확인해 `updated_at` 이 바뀌면 다시 예약 (R-032) |
+| 보호자 | 어르신 폰 알림 설정이 꺼졌을 때 | G4 맨 위 한 줄(`elder_notification_warning`), G8 에 무엇을 켜야 하는지. 정상이면 아무것도 안 보임 (R-032) |
 | 보호자 | 인계 푸시 | Expo 푸시 토큰을 `PUT /devices/me/push-token` 으로 등록. 누르면 `handoff_id` 로 G5 (`src/notify/guardianPush.ts`, `NotificationRouter.tsx`). G8 에 등록 상태 표시 |
 
 - Android: 높은 중요도 채널 `dose-ask` (알람 볼륨으로 울림, 잠금 화면에 내용 표시), 정시 전달 요청(`delivery: 'alarmClock'`)

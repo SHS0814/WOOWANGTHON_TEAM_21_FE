@@ -2,13 +2,14 @@ import { router } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 
-import { api, guardianMessage, type Device, type UnchangedMode } from '@/api';
+import { api, guardianMessage, type Device, type NotificationStatus, type UnchangedMode } from '@/api';
 import { BigButton } from '@/components/BigButton';
 import { Field } from '@/components/Field';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { useRole } from '@/lib/role';
 import { onPushStatus, pushStatus, type PushStatus } from '@/notify/guardianPush';
+import { spokenTime } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
 import { useMe } from '@/lib/useMe';
 import { colors } from '@/theme';
@@ -139,6 +140,7 @@ export default function Settings() {
               {d.role === 'elder' ? '어르신 폰' : '보호자 폰'} · {d.display_name}
               {d.is_me ? ' (이 폰)' : ''}
             </T>
+            {d.role === 'elder' ? <ElderNotificationStatus status={d.notification_status} /> : null}
             <BigButton size="guardian" variant="secondary" label="연결 해제" onPress={() => confirmUnpair(d)} />
           </View>
         ))}
@@ -148,6 +150,26 @@ export default function Settings() {
       </Section>
       {msg ? <T style={{ color: colors.attention }}>{msg}</T> : null}
     </Screen>
+  );
+}
+
+/**
+ * 어르신 폰 알림 준비 상태 (api.md 2.7, R-032). 무엇이 꺼져 있는지와 어디서 켜는지.
+ * 정상이거나 아직 보고가 없으면 아무것도 보이지 않는다 (원칙 2)
+ */
+function ElderNotificationStatus({ status }: { status: NotificationStatus | null }) {
+  if (!status || status.ready) return null;
+  return (
+    <View style={styles.warn}>
+      <T style={{ fontWeight: '700' }}>! 어르신 폰 알림 설정이 꺼져 있어 알림이 늦을 수 있어요</T>
+      {!status.notifications_allowed ? <T>• 알림이 꺼져 있어요. 어르신 폰 설정 → 앱 → 약 챙김 → 알림을 허용해 주세요.</T> : null}
+      {status.exact_alarm_allowed === false ? (
+        <T>• "알람 및 리마인더"가 꺼져 있어요. 어르신 폰 설정 → 앱 → 약 챙김 → 알람 및 리마인더를 켜 주세요.</T>
+      ) : null}
+      <T variant="small" style={{ color: colors.subtle }}>
+        {spokenTime(new Date(status.reported_at))}에 어르신 폰에서 알려온 상태예요.
+      </T>
+    </View>
   );
 }
 
@@ -177,4 +199,5 @@ const styles = StyleSheet.create({
   choice: { borderWidth: 2, borderColor: colors.border, borderRadius: 12, padding: 14, gap: 4, minHeight: 72, justifyContent: 'center' },
   choiceOn: { borderWidth: 4, borderColor: colors.primary, backgroundColor: colors.secondaryBg },
   device: { gap: 8, borderBottomWidth: 1, borderColor: colors.border, paddingBottom: 10 },
+  warn: { borderWidth: 2, borderColor: colors.attention, backgroundColor: colors.attentionBg, borderRadius: 12, padding: 12, gap: 6 },
 });
