@@ -35,11 +35,11 @@ function Row({ ev }: { ev: DoseEvent }) {
       <View style={styles.row} accessible accessibilityLabel={`${tod}, 기록 있음`}>
         <T variant="elderTitle">✓ {tod}</T>
         <T variant="elderBody">{spokenTime(new Date(ev.taken_at))}</T>
-        {ev.outcome_source === 'ai' && photo ? <RemotePhoto photo={photo} style={styles.photo} label={`${tod} 약통 사진`} /> : null}
+        {ev.outcome_source === 'ai' && photo ? <RemotePhoto photo={photo} style={styles.photo} label={`${tod} 약통 사진`} size="elder" /> : null}
         {ev.outcome_source === 'guardian' ? (
-          <JudgeBadge kind="guardian" guardianName={ev.decided_by?.display_name} />
+          <JudgeBadge kind="guardian" guardianName={ev.decided_by?.display_name} size="elder" />
         ) : (
-          <JudgeBadge kind="ai" isMock={ev.is_mock} />
+          <JudgeBadge kind="ai" isMock={ev.is_mock} size="elder" />
         )}
         {ev.is_simulated ? <T variant="elderBody">시뮬레이션</T> : null}
       </View>

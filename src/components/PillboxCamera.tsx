@@ -50,7 +50,7 @@ export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder' }
         {permission.canAskAgain ? (
           <BigButton label="카메라 켜기" onPress={requestPermission} size={size} />
         ) : canSkip ? null : (
-          <Text style={styles.permText}>설정에서 카메라를 허용해 주세요.</Text>
+          <Text style={[styles.permText, { fontSize: big ? 30 : 22 }]}>설정에서 카메라를 허용해 주세요.</Text>
         )}
         {canSkip ? (
           <Pressable onPress={() => capture(null)} accessibilityRole="button" style={styles.skip}>
@@ -85,7 +85,7 @@ export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder' }
             <Text style={styles.shutterText}>{busy ? '…' : '찍기'}</Text>
           </Pressable>
           {Platform.OS === 'web' || !ready ? (
-            <Text style={styles.hint}>{api.mode === 'mock' ? '카메라가 준비되지 않으면 사진 없이 진행해요 (모의)' : '카메라를 준비하고 있어요'}</Text>
+            <Text style={[styles.hint, { fontSize: big ? 28 : 18 }]}>{api.mode === 'mock' ? '카메라가 준비되지 않으면 사진 없이 진행해요 (모의)' : '카메라를 준비하고 있어요'}</Text>
           ) : null}
         </View>
       </View>

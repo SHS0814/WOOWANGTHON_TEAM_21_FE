@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   },
   text: { color: colors.mockText, fontSize: 18, fontWeight: '700', flexShrink: 1 },
   devBtn: { borderWidth: 2, borderColor: colors.mockText, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  devText: { color: colors.mockText, fontSize: 16, fontWeight: '700' },
+  devText: { color: colors.mockText, fontSize: 18, fontWeight: '700' },
   sim: { backgroundColor: colors.simBg, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, alignSelf: 'stretch' },
   simText: { color: colors.simText, fontSize: 20, fontWeight: '700', textAlign: 'center' },
   mockTag: { alignSelf: 'center', backgroundColor: colors.mockBg, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 4 },

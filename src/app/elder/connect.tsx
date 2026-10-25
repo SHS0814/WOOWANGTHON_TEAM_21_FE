@@ -65,7 +65,7 @@ export default function Connect() {
         accessibilityLabel="6자리 연결 코드"
         style={styles.input}
       />
-      <BigButton label="숫자로 연결" variant="secondary" size="guardian" disabled={code.length !== 6} onPress={() => pair({ short_code: code, platform })} />
+      <BigButton label="숫자로 연결" variant="secondary" disabled={code.length !== 6} onPress={() => pair({ short_code: code, platform })} />
       {error ? <T variant="elderBody" style={{ color: colors.attention }}>{error}</T> : null}
       {api.mode === 'mock' ? (
         <Pressable accessibilityRole="button" onPress={() => pair({ code: 'mock', platform })} style={{ padding: 12 }}>

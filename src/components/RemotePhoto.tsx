@@ -8,7 +8,18 @@ import { colors } from '@/theme';
  * 서명 URL 사진 (2.3). 만료됐거나 서명 오류로 못 읽으면 GET /photos/{id} 로 한 번 새로 받는다 (5장).
  * 보관 기간이 지난 사진은 그렇게 표시한다.
  */
-export function RemotePhoto({ photo, style, label }: { photo: Photo; style?: StyleProp<ImageStyle>; label?: string }) {
+export function RemotePhoto({
+  photo,
+  style,
+  label,
+  size = 'guardian',
+}: {
+  photo: Photo;
+  style?: StyleProp<ImageStyle>;
+  label?: string;
+  /** 어르신 화면이면 안내 글씨를 28pt 로 (R-021 Q-003) */
+  size?: 'elder' | 'guardian';
+}) {
   const [p, setP] = useState(photo);
   const [state, setState] = useState<'ok' | 'expired' | 'failed'>('ok');
   const [retried, setRetried] = useState(false);
@@ -30,7 +41,7 @@ export function RemotePhoto({ photo, style, label }: { photo: Photo; style?: Sty
     const text = !p.url ? '사진 없음 (모의 촬영)' : state === 'expired' ? '보관 기간이 지난 사진이에요' : '사진을 불러오지 못했어요';
     return (
       <View style={[style, styles.empty]}>
-        <Text style={styles.text}>{text}</Text>
+        <Text style={[styles.text, size === 'elder' && { fontSize: 28 }]}>{text}</Text>
       </View>
     );
   }
