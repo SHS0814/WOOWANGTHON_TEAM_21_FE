@@ -1,12 +1,14 @@
-// 보호자 폰 푸시 (api.md 3.9, 4.3). Expo 푸시 토큰을 받아 PUT /devices/me/push-token 으로 등록한다.
-// Expo Go(Android, SDK 53+)에서는 원격 푸시를 받을 수 없고, EAS 프로젝트 id 가 있어야 토큰을 받는다 (README)
+// 보호자 폰 푸시 (api.md 3.9, 4.3, R-039). 서버가 FCM 으로 직접 보내므로 Android 기기 FCM 토큰을 받아
+// PUT /devices/me/push-token 으로 등록한다. iOS 는 푸시를 지원하지 않는다 (R-039): 토큰을 보내지 않고 넘어간다.
+// Firebase 설정(google-services.json) 없이 만든 빌드에서는 토큰을 받을 수 없다 (app.config.js, README)
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 import { api } from '@/api';
 import { ensurePermission, notificationsSupported } from '@/notify/channels';
 import { Notifications } from '@/notify/module';
 
-export type PushStatus = 'unknown' | 'registered' | 'denied' | 'unsupported' | 'no_project' | 'failed';
+export type PushStatus = 'unknown' | 'registered' | 'denied' | 'unsupported' | 'no_firebase' | 'failed';
 
 let status: PushStatus = 'unknown';
 const listeners = new Set<() => void>();
@@ -25,9 +27,9 @@ function set(s: PushStatus) {
   listeners.forEach((l) => l());
 }
 
-function projectId(): string | undefined {
-  const extra = Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined;
-  return extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+function firebaseConfigured(): boolean {
+  const extra = Constants.expoConfig?.extra as { firebaseConfigured?: boolean } | undefined;
+  return extra?.firebaseConfigured === true;
 }
 
 let inFlight: Promise<PushStatus> | null = null;
@@ -41,24 +43,34 @@ export function registerGuardianPush(): Promise<PushStatus> {
 }
 
 async function register(): Promise<PushStatus> {
-  if (!notificationsSupported) return (set('unsupported'), status);
+  if (Platform.OS !== 'android' || !notificationsSupported) return (set('unsupported'), status);
+  if (!firebaseConfigured()) return (set('no_firebase'), status);
   if (!(await ensurePermission())) return (set('denied'), status);
-  const id = projectId();
-  if (!id) return (set('no_project'), status);
   try {
-    const token = await Notifications.getExpoPushTokenAsync({ projectId: id });
-    await api.putPushToken(token.data);
-    set('registered');
-  } catch {
-    // Expo Go(Android)나 네트워크 문제. 다음에 앱을 열 때 다시 시도한다
+    const token = await Notifications.getDevicePushTokenAsync();
+    await send(token.data);
+  } catch (e) {
+    // 네트워크 문제나 Google Play 서비스 없음. 다음에 앱을 열 때 다시 시도한다
+    if (__DEV__) console.warn('[push] FCM 토큰 등록 실패', String(e));
     set('failed');
   }
   return status;
 }
 
-/** 토큰이 바뀌면 다시 등록한다 */
+async function send(token: unknown) {
+  if (typeof token !== 'string' || !token) throw new Error('FCM 토큰 없음');
+  await api.putPushToken(token);
+  set('registered');
+}
+
+/** FCM 토큰이 바뀌면 새 토큰을 다시 등록한다 */
 export function watchPushToken(): () => void {
-  if (!notificationsSupported) return () => {};
-  const sub = Notifications.addPushTokenListener(() => void registerGuardianPush());
+  if (Platform.OS !== 'android' || !notificationsSupported) return () => {};
+  const sub = Notifications.addPushTokenListener((t) => {
+    void api.hasToken().then((has) => {
+      if (!has) return;
+      send(t.data).catch(() => set('failed'));
+    });
+  });
   return () => sub.remove();
 }

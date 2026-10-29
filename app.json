@@ -24,7 +24,7 @@
         "SCHEDULE_EXACT_ALARM",
         "android.permission.CAMERA"
       ],
-      "package": "com.anonymous.woowangfe"
+      "package": "kr.dementiacheck.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -46,7 +46,8 @@
           "defaultChannel": "guardian",
           "color": "#0B4FA8"
         }
-      ]
+      ],
+      "./plugins/withReleaseSigning"
     ],
     "scheme": "woowang",
     "experiments": {

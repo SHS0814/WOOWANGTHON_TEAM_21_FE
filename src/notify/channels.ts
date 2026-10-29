@@ -5,7 +5,10 @@ import { Notifications, notificationsSupported } from '@/notify/module';
 
 /** 어르신 복약 질문. 높은 중요도 + 알람음 (Android). full-screen intent 는 개발 빌드 + 네이티브 모듈이 필요해서 이번엔 없다 */
 export const DOSE_CHANNEL = 'dose-ask';
-/** 보호자 인계·요약 푸시 */
+/**
+ * 보호자 인계·요약 푸시. 서버(FCM, T-BE7)가 android.notification.channel_id 로 이 id 를 보낸다 (R-039).
+ * app.json expo-notifications defaultChannel 도 같은 값이라, 서버가 채널을 안 적어도 이 채널로 온다
+ */
 export const GUARDIAN_CHANNEL = 'guardian';
 
 export { notificationsSupported };
@@ -35,6 +38,7 @@ export function setupNotifications(): Promise<void> {
         name: '확인이 필요한 일',
         description: '어르신 약 확인이 필요할 때 알려드려요',
         importance: Notifications.AndroidImportance.HIGH,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
     }
   })().catch((e) => {
