@@ -2,10 +2,37 @@
 // google-services.json(Firebase, Android 푸시)은 커밋하지 않는다. 경로를 환경 변수 GOOGLE_SERVICES_JSON 으로 받는다 (README "보호자 푸시").
 // - 값이 없으면: 경고만 하고 Firebase 없이 설정한다 (Expo Go·웹·화면 개발은 그대로. 보호자 푸시만 안 됨)
 // - 값이 있는데 파일이 없거나 패키지 이름이 다르면: 설정을 멈춘다 (빌드가 명확히 실패)
+// APP_VARIANT=guardian 이면 어르신용과 한 폰에 함께 설치할 수 있는 보호자용 빌드가 된다 (R-044, README "폰 한 대에 앱 두 개").
+// 값이 없으면 app.json 그대로다.
 const fs = require('fs');
 const path = require('path');
 
-module.exports = ({ config }) => {
+const VARIANTS = {
+  guardian: {
+    name: '약 챙김 보호자',
+    scheme: 'woowang-guardian',
+    androidPackage: 'kr.dementiacheck.app.guardian',
+  },
+};
+
+function applyVariant(config) {
+  const name = process.env.APP_VARIANT;
+  if (!name) return config;
+  const variant = Object.hasOwn(VARIANTS, name) ? VARIANTS[name] : null;
+  if (!variant) {
+    // 오타로 기본 빌드가 만들어져 어르신용 앱을 덮어쓰지 않게 멈춘다
+    throw new Error(`[app.config] 알 수 없는 APP_VARIANT 입니다: ${name} (가능한 값: ${Object.keys(VARIANTS).join(', ')})`);
+  }
+  return {
+    ...config,
+    name: variant.name,
+    scheme: variant.scheme,
+    android: { ...config.android, package: variant.androidPackage },
+  };
+}
+
+module.exports = ({ config: baseConfig }) => {
+  const config = applyVariant(baseConfig);
   const pkg = config.android?.package;
   const raw = process.env.GOOGLE_SERVICES_JSON;
   let googleServicesFile;

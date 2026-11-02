@@ -69,7 +69,7 @@ npx tsc --noEmit        # 타입 검사
 - Firebase 프로젝트 `medicine` 에 Android 앱 `kr.dementiacheck.app` 으로 등록돼 있다. 서버(BE)가 FCM HTTP v1 으로 직접 보낸다
 - `google-services.json` 은 **저장소에 넣지 않는다** (`.gitignore`). 저장소 밖 경로를 환경 변수 `GOOGLE_SERVICES_JSON` 으로 준다 (`.env` 또는 셸). `app.config.js` 가 이 경로를 `android.googleServicesFile` 로 넣는다
   - 값이 없으면: 경고만 하고 Firebase 없이 설정한다. Expo Go·웹·화면 개발은 그대로 되고, 그 상태로 만든 Android 빌드만 푸시를 못 받는다
-  - 값이 있는데 파일이 없거나, 파일에 `kr.dementiacheck.app` 이 없으면: 설정 단계에서 멈춘다
+  - 값이 있는데 파일이 없거나, 파일에 빌드할 패키지(기본 `kr.dementiacheck.app`, 보호자용 `kr.dementiacheck.app.guardian`)가 없으면: 설정 단계에서 멈춘다
 - `GOOGLE_SERVICES_JSON` 을 바꾸면 `npx expo prebuild --platform android` 부터 다시 한다 (`android/app/google-services.json` 으로 복사된다. `android/` 도 커밋 안 함)
 - Android 채널 id 는 `guardian` (서버 `FCM_ANDROID_CHANNEL_ID` 기본값과 같음). 서버가 채널을 안 적어도 앱 기본 채널이 `guardian` 이다
 - 확인: 보호자 등록 뒤 서버 로그에 `PUT /devices/me/push-token 204`. 토큰 유효성은 BE `scripts/fcm_check.py <서비스 계정 키 경로> <기기 토큰>` 이 200
@@ -159,6 +159,49 @@ adb install -r android/app/build/outputs/apk/release/app-release.apk
 - 시험 결과 (2026-10-30, 맥 M 계열, 시험용 키): `assembleRelease` 11분 15초, APK 121MB (4개 ABI 포함), `apksigner` v2 서명 확인, 패키지 `kr.dementiacheck.app`. 속성 없이 빌드하면 `packageRelease` 에서 멈춤 확인
 - APK 는 저장소에 넣지 않는다
 
+## 폰 한 대에 앱 두 개 (시험·시연, R-044)
+
+`APP_VARIANT=guardian` 으로 빌드하면 어르신용과 함께 설치되는 다른 앱이 된다. 값이 없으면 지금까지와 똑같은 기본 빌드다. 없는 값을 주면 설정 단계에서 멈춘다. 역할은 두 앱 모두 지금처럼 앱 안에서 고른다.
+
+| | 기본 | `APP_VARIANT=guardian` |
+|---|---|---|
+| Android 패키지 | `kr.dementiacheck.app` | `kr.dementiacheck.app.guardian` |
+| 앱 이름 | 약 챙김 | 약 챙김 보호자 |
+| 딥링크 scheme | `woowang` | `woowang-guardian` |
+
+- `google-services.json` 하나에 두 패키지가 모두 있어야 한다. 빌드하는 패키지가 없으면 설정 단계에서 멈춘다. 서버는 같은 Firebase 프로젝트의 서비스 계정으로 두 앱에 보내므로 서버 설정은 그대로다
+- 앱 안 이동과 알림 눌러 G5 이동은 scheme 을 쓰지 않는다. QR 값 `woowang://pair?code=...` 는 두 앱이 같은 형식으로 쓰는 값이고, 읽을 때 `code` 만 본다 (`src/lib/pairCode.ts`)
+- 위 "개발 빌드"·"알림 확인" 명령을 보호자용에 쓸 때는 패키지를 `kr.dementiacheck.app.guardian`, scheme 을 `woowang-guardian` 으로 바꾼다
+
+### 빌드 (android/ 는 한 번에 한 변형만)
+
+`android/` 폴더는 하나라서 한 번에 한 변형만 담는다. gradle 만 다시 돌리면 직전 변형이 빌드되고, APK 도 같은 경로에 덮어쓴다. 그래서 **변형을 바꿀 때마다 `--clean` 으로 다시 만들고, APK 는 저장소 밖으로 복사한 뒤 다음 변형을 빌드한다.** 환경 변수는 gradle 단계에서도 다시 읽히므로(앱에 들어가는 설정) 아래처럼 prebuild 와 gradle 을 같은 셸에서 실행한다. 괄호는 값이 다음 명령으로 새지 않게 한다. 서명 속성은 "release APK" 와 같고, 두 앱에 같은 키를 쓴다.
+
+```bash
+export GOOGLE_SERVICES_JSON=~/woowang-secrets/google-services.json
+export EXPO_PUBLIC_API_MODE=http EXPO_PUBLIC_API_BASE_URL=https://<터널 도메인>/api/v1
+mkdir -p ~/woowang-apks
+
+# 어르신용 (기본)
+(unset APP_VARIANT
+  npx expo prebuild --platform android --clean &&
+  (cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a) &&
+  cp android/app/build/outputs/apk/release/app-release.apk ~/woowang-apks/woowang-elder.apk)
+
+# 보호자용
+(export APP_VARIANT=guardian
+  npx expo prebuild --platform android --clean &&
+  (cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a) &&
+  cp android/app/build/outputs/apk/release/app-release.apk ~/woowang-apks/woowang-guardian.apk)
+
+adb install -r ~/woowang-apks/woowang-elder.apk
+adb install -r ~/woowang-apks/woowang-guardian.apk
+```
+
+- `-PreactNativeArchitectures=arm64-v8a` 는 폰용으로 빌드 시간과 크기를 줄인다. 에뮬레이터(x86_64)에 깔려면 뺀다
+- 개발 빌드로 보호자용을 띄울 때는 Metro 에도 같은 값을 준다: `APP_VARIANT=guardian npx expo start --dev-client`. Metro 하나는 한 변형의 설정만 주므로, 두 앱을 함께 시험할 때는 release APK 를 쓴다
+- 심사위원 APK 는 지금처럼 기본 빌드다 (R-044)
+
 ## 구조
 
 | 경로 | 내용 |
@@ -166,7 +209,7 @@ adb install -r android/app/build/outputs/apk/release/app-release.apk
 | `src/app/` | expo-router 화면. `elder/` 어르신(E1~E8), `guardian/` 보호자(G1~G8), `role.tsx` 역할 선택, `dev.tsx` 개발·시연 도구 |
 | `src/api/` | 데이터 접근의 유일한 지점. `types.ts` 계약서(DOCS `docs/design/api.md`) 타입, `client.ts` 인터페이스, `http.ts` 실제 서버, `mock.ts` 모의 서버, `errors.ts` 오류 코드 |
 | `src/components/` | 큰 버튼, 카메라(가이드 틀), 약통 격자 그림, 판독 사진, 모의 띠 |
-| `app.config.js` | `app.json` 위에 저장소 밖 설정(`GOOGLE_SERVICES_JSON`)을 얹는다 |
+| `app.config.js` | `app.json` 위에 저장소 밖 설정(`GOOGLE_SERVICES_JSON`)과 보호자용 빌드 변형(`APP_VARIANT`)을 얹는다 |
 | `plugins/withReleaseSigning.js` | release APK 서명 설정 (값은 Gradle 속성, 저장소 밖) |
 
 ## 외부 기술
