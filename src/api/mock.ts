@@ -80,7 +80,8 @@ interface Store {
   family: { id: string; elder_display_name: string; is_demo: boolean } | null;
   guardian: Device | null;
   elder: Device | null;
-  pairingCodes: { code: string; short_code: string; expires_at: string }[];
+  /** kind 가 없으면 이전에 저장된 어르신 코드 */
+  pairingCodes: { kind?: 'elder' | 'guardian'; code: string; short_code: string; expires_at: string }[];
   pillbox: Pillbox | null;
   slots: Slot[];
   scheduleUpdatedAt: string | null;
@@ -96,6 +97,9 @@ interface Store {
   nextScenario: MockScenario | null;
   seq: number;
 }
+
+/** 모의 서버의 보호자 초대 코드. 앱에 초대 코드를 만드는 화면이 없어 이 값으로 합류를 확인한다 */
+export const MOCK_INVITE_CODE = 'mock-invite';
 
 function initialStore(): Store {
   return {
@@ -281,7 +285,7 @@ class MockApi implements Api {
     const short = `${Math.floor(100000 + Math.random() * 900000)}`;
     const code = `mock${short}`;
     const expires_at = addMin(iso(new Date()), kind === 'elder' ? 10 : 24 * 60);
-    s.pairingCodes = [{ code, short_code: short, expires_at }];
+    s.pairingCodes = [{ kind, code, short_code: short, expires_at }];
     await this.commit();
     return { kind, code, short_code: kind === 'elder' ? short : null, expires_at, qr_payload: `woowang://pair?code=${code}` };
   }
@@ -289,7 +293,13 @@ class MockApi implements Api {
   async pair(req: PairRequest) {
     const s = await this.ready();
     const given = 'code' in req ? req.code : req.short_code;
-    const ok = given === 'mock' || s.pairingCodes.some((c) => c.code === given || c.short_code === given);
+    // 모의 서버에서 오류 화면을 확인하는 코드 (3.4 오류)
+    if (given === 'mock-expired') throw new ApiError(410, 'code_expired', '모의: 만료된 코드');
+    if (given === 'mock-used') throw new ApiError(410, 'code_used', '모의: 이미 쓴 코드');
+    if (given === 'mock-limit') throw new ApiError(429, 'rate_limited', '모의: 시도 제한');
+    const issued = s.pairingCodes.find((c) => c.code === given || (c.kind !== 'guardian' && c.short_code === given));
+    if (given === MOCK_INVITE_CODE || issued?.kind === 'guardian') return this.pairGuardian(req);
+    const ok = given === 'mock' || given === 'mock-elder' || !!issued;
     if (!ok) throw new ApiError(400, 'code_invalid', '모의: 없는 코드');
     // 같은 기기에서 보호자 흐름을 거치지 않았으면 모의 가족(약통·일정 포함)으로 연결한다
     if (!s.family) this.seedFamily();
@@ -301,6 +311,23 @@ class MockApi implements Api {
       device: copy(s.elder),
       family: { id: s.family!.id, elder_display_name: s.family!.elder_display_name, guardians: this.guardians() },
       consent_required: true,
+    };
+  }
+
+  /** 3.4 보호자 합류. 모의 서버는 보호자 칸이 하나라 그 자리를 합류한 보호자로 바꾼다 */
+  private async pairGuardian(req: PairRequest) {
+    const s = this.s;
+    const name = 'display_name' in req ? req.display_name : undefined;
+    if (!name) throw new ApiError(422, 'validation_error', '모의: 보호자 초대에는 이름이 필요함');
+    if (!s.family) this.seedFamily();
+    s.pairingCodes = s.pairingCodes.filter((c) => c.kind !== 'guardian');
+    s.guardian = this.newDevice('guardian', name);
+    await this.commit();
+    return {
+      token: 'mock-token',
+      device: copy(s.guardian),
+      family: { id: s.family!.id, elder_display_name: s.family!.elder_display_name, guardians: this.guardians() },
+      consent_required: false,
     };
   }
 

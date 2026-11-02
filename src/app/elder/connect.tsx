@@ -7,6 +7,7 @@ import { api, isApiError, type PairRequest } from '@/api';
 import { BigButton } from '@/components/BigButton';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
+import { codeFromPayload } from '@/lib/pairCode';
 import { colors } from '@/theme';
 
 /**
@@ -48,7 +49,7 @@ export default function Connect() {
             facing="back"
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
             onBarcodeScanned={({ data }) => {
-              const qrCode = codeFromQr(data);
+              const qrCode = codeFromPayload(data);
               if (qrCode) void pair({ code: qrCode, platform });
             }}
           />
@@ -77,12 +78,6 @@ export default function Connect() {
 }
 
 const platform = Platform.OS === 'android' || Platform.OS === 'ios' ? Platform.OS : null;
-
-/** QR 값 woowang://pair?code=... 에서 code 를 꺼낸다 (3.3 qr_payload) */
-function codeFromQr(data: string): string | null {
-  const m = /[?&]code=([^&]+)/.exec(data);
-  return m ? decodeURIComponent(m[1]) : null;
-}
 
 const styles = StyleSheet.create({
   scanner: { width: '100%', aspectRatio: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: '#000' },
