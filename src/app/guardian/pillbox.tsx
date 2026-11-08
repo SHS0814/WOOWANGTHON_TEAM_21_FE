@@ -3,15 +3,14 @@ import { useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
 import { api, guardianMessage, type DetectResponse, type Layout, type Refill } from '@/api';
-import { JudgeBadge } from '@/components/AiBadge';
-import { BaselineReview } from '@/components/BaselineReview';
-import { BigButton } from '@/components/BigButton';
+import { BaselineReviewScreen } from '@/components/guardian/BaselineReview';
+import { PillboxGrid } from '@/components/guardian/PillboxGrid';
+import { Card, ErrorText, GButton, GJudgeBadge, GScreen, GText, IconBubble, Notice } from '@/components/guardian/ui';
 import { PillboxCamera } from '@/components/PillboxCamera';
-import { PillboxGrid } from '@/components/PillboxGrid';
-import { Screen } from '@/components/Screen';
-import { T } from '@/components/Text';
 import { pillboxAspect } from '@/lib/pillboxAspect';
-import { colors } from '@/theme';
+import { guardian } from '@/theme';
+
+const C = guardian.color;
 
 // 줄 수에 따른 시간대 이름. 보호자가 줄 수를 고치면 이 이름을 쓴다
 const ROW_PRESETS: Record<number, string[]> = {
@@ -71,31 +70,38 @@ export default function PillboxRegister() {
 
   if (step === 'detecting' || step === 'saving') {
     return (
-      <Screen center>
+      <GScreen center scroll={false}>
         <Stack.Screen options={{ headerShown: true }} />
-        <ActivityIndicator size="large" color={colors.primary} />
-        <T variant="title" style={{ textAlign: 'center' }}>
-          {step === 'detecting' ? '약통 칸을 살펴보고 있어요' : '약통을 등록하고 있어요'}
-        </T>
-      </Screen>
+        <View style={{ alignItems: 'center', gap: 16 }}>
+          <ActivityIndicator size="large" color={C.primary} />
+          <GText variant="title" style={{ textAlign: 'center' }}>
+            {step === 'detecting' ? '약통 칸을 살펴보고 있어요' : '약통을 등록하고 있어요'}
+          </GText>
+        </View>
+      </GScreen>
     );
   }
 
   if (step === 'review' && refill && layout) {
     return (
-      <Screen scroll>
+      <>
         <Stack.Screen options={{ headerShown: true }} />
-        <BaselineReview refill={refill} layout={layout} onDone={toSchedule} />
-      </Screen>
+        <BaselineReviewScreen refill={refill} layout={layout} onDone={toSchedule} />
+      </>
     );
   }
 
   if (!detected || !layout) {
     return (
-      <Screen center footer={<BigButton size="guardian" label="다시 찍기" onPress={() => setStep('shoot')} />}>
+      <GScreen center footer={<GButton label="다시 찍기" icon="camera" onPress={() => setStep('shoot')} />}>
         <Stack.Screen options={{ headerShown: true }} />
-        <T variant="title">{error || '사진을 읽지 못했어요.'}</T>
-      </Screen>
+        <View style={{ alignItems: 'center', gap: 12 }}>
+          <IconBubble name="image" tone="warn" size={56} />
+          <GText variant="title" style={{ textAlign: 'center' }}>
+            {error || '사진을 읽지 못했어요.'}
+          </GText>
+        </View>
+      </GScreen>
     );
   }
 
@@ -115,26 +121,52 @@ export default function PillboxRegister() {
   };
 
   return (
-    <Screen scroll footer={<BigButton size="guardian" label="이대로 등록" onPress={save} />}>
+    <GScreen footer={<GButton label="이대로 등록" icon="check" onPress={save} />}>
       <Stack.Screen options={{ headerShown: true }} />
-      <JudgeBadge kind="ai" isMock={detected.is_mock} />
-      <T variant="title">
-        {layout.rows}줄 × {layout.cols}칸으로 봤어요
-      </T>
-      <T style={detected.proposal.uncertain ? { color: colors.attention, fontWeight: '700' } : undefined}>
-        {detected.proposal.uncertain ? '! AI가 구조를 확신하지 못했어요. 구조를 직접 확인해 주세요.' : '맞는지 확인해 주세요.'}
-      </T>
-      <PillboxGrid layout={layout} />
-      <View style={{ flexDirection: 'row', gap: 12 }}>
-        <View style={{ flex: 1 }}>
-          <BigButton size="guardian" variant="secondary" label="줄 빼기" disabled={layout.rows <= 1} onPress={() => setLayout(withRows(layout, layout.rows - 1))} />
+      <Card>
+        <GJudgeBadge kind="ai" isMock={detected.is_mock} />
+        <View>
+          <GText variant="label" color={C.sub}>
+            AI가 읽은 약통 구조
+          </GText>
+          <GText variant="title">
+            {layout.rows}줄 × {layout.cols}칸으로 봤어요
+          </GText>
         </View>
-        <View style={{ flex: 1 }}>
-          <BigButton size="guardian" variant="secondary" label="줄 더하기" disabled={layout.rows >= 4} onPress={() => setLayout(withRows(layout, layout.rows + 1))} />
+        {detected.proposal.uncertain ? (
+          <Notice tone="warn" title="AI가 구조를 확신하지 못했어요.">
+            구조를 직접 확인해 주세요.
+          </Notice>
+        ) : (
+          <GText color={C.sub}>맞는지 확인해 주세요.</GText>
+        )}
+        <PillboxGrid layout={layout} />
+      </Card>
+      <Card>
+        <GText variant="section">줄 수 고치기</GText>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <GButton
+              variant="secondary"
+              icon="minus"
+              label="줄 빼기"
+              disabled={layout.rows <= 1}
+              onPress={() => setLayout(withRows(layout, layout.rows - 1))}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <GButton
+              variant="secondary"
+              icon="plus"
+              label="줄 더하기"
+              disabled={layout.rows >= 4}
+              onPress={() => setLayout(withRows(layout, layout.rows + 1))}
+            />
+          </View>
         </View>
-      </View>
-      <BigButton size="guardian" variant="secondary" label="다시 찍기" onPress={() => setStep('shoot')} />
-      {error ? <T style={{ color: colors.attention }}>{error}</T> : null}
-    </Screen>
+        <GButton variant="ghost" icon="camera" label="다시 찍기" onPress={() => setStep('shoot')} />
+      </Card>
+      {error ? <ErrorText>{error}</ErrorText> : null}
+    </GScreen>
   );
 }

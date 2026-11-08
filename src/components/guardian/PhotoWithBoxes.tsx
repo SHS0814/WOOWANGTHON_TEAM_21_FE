@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { Reading } from '@/api';
 import { RemotePhoto } from '@/components/RemotePhoto';
 import { attentionMark } from '@/lib/handoff';
-import { colors } from '@/theme';
+import { guardian } from '@/theme';
 
 /**
  * 판독 사진. 칸 위치(bbox)가 있는 칸만 사진 위에 강조한다 (api.md 3.21, R-012 3번).
@@ -40,10 +40,10 @@ export function PhotoWithBoxes({ reading, aspect }: { reading: Reading; aspect: 
 }
 
 const styles = StyleSheet.create({
-  frame: { width: '100%', borderRadius: 12, overflow: 'hidden', backgroundColor: '#222' },
+  frame: { width: '100%', borderRadius: 12, overflow: 'hidden', backgroundColor: '#1E2632' },
   box: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
   flagged: { borderWidth: 4, borderStyle: 'dashed', borderColor: '#FFB020' },
   target: { borderWidth: 3, borderColor: '#FFFFFF' },
   mark: { fontSize: 22, fontWeight: '900', color: '#FFB020', textShadowColor: '#000', textShadowRadius: 4 },
-  note: { fontSize: 16, color: colors.subtle },
+  note: { fontSize: 16, lineHeight: 23, color: guardian.color.sub },
 });
