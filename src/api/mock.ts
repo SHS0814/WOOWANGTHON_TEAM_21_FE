@@ -112,7 +112,7 @@ function initialStore(): Store {
     pillbox: null,
     slots: [],
     scheduleUpdatedAt: null,
-    settings: { summary_push_enabled: false, summary_push_time: '21:00', photo_retention_days: 90, unchanged_mode: 'remind_then_retake' },
+    settings: { summary_push_enabled: false, summary_push_time: '21:00', photo_retention_days: 90, unchanged_mode: 'remind_then_retake', elder_refill_prompt: false },
     refills: [],
     eventsDate: '',
     events: [],
@@ -391,6 +391,8 @@ class MockApi implements Api {
     const layout = defaultLayout();
     s.pillbox = { id: this.id('pb'), layout, registered_photo_id: '', confirmed_at: iso(new Date()), active: true };
     s.slots = seedSlots(layout).map((x) => ({ ...x, id: this.id('s') }));
+    // R-071: 시드 약통이 하루 약통이면 하루 약통 등록과 같이 어르신 채우기 안내를 켠다
+    s.settings.elder_refill_prompt = isDailySchedule(s.slots);
     s.refills = [this.makeRefill(null, 'registration')];
     s.eventsDate = '';
   }
@@ -528,11 +530,10 @@ class MockApi implements Api {
     return copy({ pillbox: s.pillbox, refill });
   }
 
-  async currentPillbox(): Promise<PillboxCurrent> {
-    const { s } = await this.auth('guardian');
-    if (!s.pillbox) throw new ApiError(404, 'pillbox_required', '모의: 약통 없음');
-    const now = new Date();
-    const wd = mondayIndex(now);
+  /** 약통에 남은 칸의 일정 (모의 계산, 3.12 remaining_cells 와 R-071 refill_prompt 에 쓴다) */
+  private remainingSlots(): Slot[] {
+    const s = this.s;
+    const wd = mondayIndex(new Date());
     const daily = isDailySchedule(s.slots);
     const lastRefillAt = s.refills.length ? new Date(s.refills[s.refills.length - 1].filled_at).getTime() : 0;
     // 하루 약통은 마지막 리필 뒤에 드신 칸만 빈 칸으로 본다 (저녁 뒤 채우면 다시 3칸)
@@ -543,10 +544,19 @@ class MockApi implements Api {
     );
     // 모의 계산: 주간 약통을 월요일에 채웠다고 보고, 오늘 아직 안 드신 칸과 이후 칸을 남은 칸으로 센다.
     // 하루 약통(R-054)은 오늘 칸 중 아직 안 드신 칸만 남은 칸이다. 리필 기준(threshold)은 BE(T-BE9) 규칙이 정해지기 전까지 모의로 0 (다 쓰면 리필)
-    const remaining = s.slots
+    return s.slots
       .slice()
       .sort((a, b) => weekMinutes(a) - weekMinutes(b))
       .filter((slot) => (daily ? slot.weekday === wd && !taken.has(slot.cell_id) : slot.weekday > wd || (slot.weekday === wd && !taken.has(slot.cell_id))));
+  }
+
+  async currentPillbox(): Promise<PillboxCurrent> {
+    const { s } = await this.auth('guardian');
+    if (!s.pillbox) throw new ApiError(404, 'pillbox_required', '모의: 약통 없음');
+    const now = new Date();
+    const wd = mondayIndex(now);
+    const daily = isDailySchedule(s.slots);
+    const remaining = this.remainingSlots();
     const last = remaining[remaining.length - 1];
     const perDay = Math.max(0, ...[0, 1, 2, 3, 4, 5, 6].map((d) => s.slots.filter((x) => x.weekday === d).length));
     const threshold = daily ? 0 : perDay * 2;
@@ -927,7 +937,9 @@ class MockApi implements Api {
       this.handOff(ev, 'double_suspected');
       result = 'guardian_notified';
     }
-    const res: UploadResponse = { result, dose_event: this.view(ev), is_mock: true };
+    // R-071: 정상 기록으로 남은 칸이 0이 됐고 설정이 켜져 있으면 어르신 E7a 에 "약통을 채워 주세요" (하루 약통 저녁 기록)
+    const refill_prompt = result === 'recorded' && !!s.settings.elder_refill_prompt && this.remainingSlots().length === 0;
+    const res: UploadResponse = { result, dose_event: this.view(ev), is_mock: true, refill_prompt };
     s.uploads[clientUploadId] = res;
     await this.commit();
     return copy(res);

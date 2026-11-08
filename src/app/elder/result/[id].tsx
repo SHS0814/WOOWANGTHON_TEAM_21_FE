@@ -10,6 +10,8 @@ import { guardianName, useMe } from '@/lib/useMe';
 type Kind = 'done' | 'retake' | 'remind' | 'handoff' | 'error';
 
 const AUTO_HOME_MS = 5000;
+/** R-071: "약통을 채워 주세요" 줄이 있으면 읽을 시간을 더 준다 */
+const AUTO_HOME_REFILL_MS = 12000;
 
 /**
  * E7 결과 (api.md 3.18 result 표)
@@ -20,15 +22,15 @@ const AUTO_HOME_MS = 5000;
  * 어떤 경우에도 "더 드세요", "드시지 마세요" 같은 지시는 하지 않는다 (원칙 6). 문구는 앱 템플릿이다
  */
 export default function Result() {
-  const { id, kind, name, mock, sim } = useLocalSearchParams<{ id: string; kind: Kind; name?: string; mock?: string; sim?: string }>();
+  const { id, kind, name, mock, sim, refill } = useLocalSearchParams<{ id: string; kind: Kind; name?: string; mock?: string; sim?: string; refill?: string }>();
   const { data: me } = useMe();
 
   const autoHome = kind === 'done' || kind === 'handoff';
   useEffect(() => {
     if (!autoHome) return;
-    const t = setTimeout(() => router.dismissTo('/elder'), AUTO_HOME_MS);
+    const t = setTimeout(() => router.dismissTo('/elder'), kind === 'done' && refill ? AUTO_HOME_REFILL_MS : AUTO_HOME_MS);
     return () => clearTimeout(t);
-  }, [autoHome]);
+  }, [autoHome, kind, refill]);
 
   if (!me) return null;
   const retake = () => router.replace({ pathname: '/elder/camera/[id]', params: { id } });
@@ -51,6 +53,12 @@ export default function Result() {
             고마워요.{'\n'}
             {name ? `${name} ` : ''}약 기록해 뒀어요.
           </T>
+          {/* R-071: 문장 한 줄만 (버튼 없음) */}
+          {refill ? (
+            <T variant="elderBody" style={{ textAlign: 'center' }}>
+              약통을 채워 주세요.
+            </T>
+          ) : null}
         </Screen>
       );
     case 'retake':
