@@ -5,7 +5,7 @@ import { Linking, View } from 'react-native';
 import { api, guardianMessage, isApiError, type Layout, type Reading, type Verdict } from '@/api';
 import { PhotoWithBoxes } from '@/components/guardian/PhotoWithBoxes';
 import { PillboxGrid } from '@/components/guardian/PillboxGrid';
-import { Card, ErrorText, GButton, GJudgeBadge, GScreen, GText, IconBubble, Notice, SectionTitle, StatusChip } from '@/components/guardian/ui';
+import { Section, ErrorText, GButton, GJudgeBadge, GScreen, GText, IconBubble, Notice, SectionTitle, StatusChip } from '@/components/guardian/ui';
 import { SimulationTag } from '@/components/MockBanner';
 import { VERDICT_CHIP } from '@/lib/doseStatus';
 import { reasonDetail, reasonTitle, VERDICT_LABEL } from '@/lib/handoff';
@@ -96,11 +96,11 @@ export default function HandoffDetail() {
     <GScreen footer={footer}>
       {ev.is_simulated ? <SimulationTag /> : null}
 
-      <Card tone="danger">
+      <Section>
         <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
           <IconBubble name="alert" tone="danger" size={48} />
           <View style={{ flex: 1 }}>
-            <GText variant="title" accessibilityRole="header">
+            <GText variant="title" color={C.danger} accessibilityRole="header">
               {reasonTitle(h.reason)}
             </GText>
           </View>
@@ -116,7 +116,7 @@ export default function HandoffDetail() {
           </Notice>
         ) : null}
         <GButton variant="secondary" icon="phone" label={`${me.family.elder_display_name}께 전화하기`} onPress={() => Linking.openURL('tel:')} />
-      </Card>
+      </Section>
 
       <SectionTitle>사진과 AI 판독</SectionTitle>
       {readings.length ? (
@@ -124,12 +124,12 @@ export default function HandoffDetail() {
           <ReadingView key={r.id} reading={r} layout={h.layout} title={readings.length > 1 ? (i === 0 ? '다시 찍은 사진' : '처음 사진') : undefined} />
         ))
       ) : (
-        <Card>
+        <Section>
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
             <IconBubble name="image" tone="neutral" />
             <GText color={C.sub}>사진이 없어요.</GText>
           </View>
-        </Card>
+        </Section>
       )}
 
       <Notice tone="info" icon="info" title="칸이 빈 것만 확인했어요.">
@@ -143,7 +143,7 @@ const TONE_FG = { ok: C.ok, warn: C.warn, danger: C.danger, neutral: C.neutral, 
 
 function ReadingView({ reading, layout, title }: { reading: Reading; layout: Layout; title?: string }) {
   return (
-    <Card>
+    <Section>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <View style={{ flex: 1, minWidth: 140 }}>
           <GText variant="bodyStrong">{title ?? '보내 주신 사진'}</GText>
@@ -155,6 +155,6 @@ function ReadingView({ reading, layout, title }: { reading: Reading; layout: Lay
       </View>
       <PhotoWithBoxes reading={reading} aspect={pillboxAspect(layout)} />
       <PillboxGrid layout={layout} cells={reading.cells} targetCellId={reading.target_cell_id} />
-    </Card>
+    </Section>
   );
 }

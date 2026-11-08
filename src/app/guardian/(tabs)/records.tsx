@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 
 import { api, type DoseEvent, type Summary } from '@/api';
-import { Card, GJudgeBadge, GScreen, GText, ListGroup, ListRow, MockTag, SectionTitle, StatusChip } from '@/components/guardian/ui';
+import { Section, GJudgeBadge, GScreen, GText, ListGroup, ListRow, MockTag, SectionTitle, StatusChip } from '@/components/guardian/ui';
 import { doseStatus, takenCount } from '@/lib/doseStatus';
 import { doseName } from '@/lib/doseLabel';
 import { dateKey, shortDateOfKey, spokenTime } from '@/lib/time';
@@ -22,9 +22,9 @@ export default function Records() {
     <GScreen inTabs title="기록">
       <SectionTitle>오늘</SectionTitle>
       {events === null ? (
-        <Card>
+        <Section>
           <GText color={C.sub}>기록을 불러오지 못했어요.</GText>
-        </Card>
+        </Section>
       ) : events?.length ? (
         <ListGroup>
           {events.map((ev) => (
@@ -36,7 +36,7 @@ export default function Records() {
       {week ? (
         <>
           <SectionTitle>이번 주</SectionTitle>
-          <Card>
+          <Section>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
               <View style={{ flex: 1 }} accessible accessibilityLabel={weekLine(week)}>
                 <GText variant="label" color={C.sub}>
@@ -54,7 +54,7 @@ export default function Records() {
             </View>
             <GText color={C.sub}>{weekLine(week)}</GText>
             <Flags s={week} />
-          </Card>
+          </Section>
         </>
       ) : null}
 

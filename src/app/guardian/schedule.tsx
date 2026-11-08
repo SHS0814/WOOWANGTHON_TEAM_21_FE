@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { api, guardianMessage, type TimeOfDay } from '@/api';
-import { Card, ErrorText, GButton, GScreen, GText, IconBubble, Notice } from '@/components/guardian/ui';
+import { Section, ErrorText, GButton, GScreen, GText, IconBubble, Notice } from '@/components/guardian/ui';
 import { goBackOr } from '@/lib/nav';
 import { buildSlots, cellMapping } from '@/lib/slots';
 import { spokenHHMM, TIME_OF_DAY_LABELS } from '@/lib/time';
@@ -80,7 +80,7 @@ export default function Schedule() {
         </Notice>
       ) : null}
       {present.map((k) => (
-        <Card key={k}>
+        <Section key={k}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <IconBubble name="clock" tone="info" />
             <View style={{ flex: 1 }}>
@@ -112,7 +112,7 @@ export default function Schedule() {
               />
             </View>
           </View>
-        </Card>
+        </Section>
       ))}
       {timing ? (
         <Notice tone="neutral" icon="bell">

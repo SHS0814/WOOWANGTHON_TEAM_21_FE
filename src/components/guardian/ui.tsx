@@ -82,13 +82,16 @@ export function GScreen({ children, title, eyebrow, footer, scroll = true, cente
   );
 }
 
-// ── 카드·묶음 ─────────────────────────────────────────
+// ── 구획 ──────────────────────────────────────────────
+// 흰 바탕 한 면 위에서 상자 없이 섹션 제목과 얇은 구분선으로만 나눈다 (T-FE15).
+// 구획(Section·ListGroup)은 아래에 구분선을 하나 긋고 끝난다. 그래서 구획이 이어져도 선이 겹치지 않는다
 
-export function Card({ children, style, tone, padded = true }: { children: ReactNode; style?: StyleProp<ViewStyle>; tone?: GuardianTone; padded?: boolean }) {
-  return <View style={[s.card, padded && s.cardPad, tone && { borderColor: TONE[tone].fg, borderWidth: 1.5 }, style]}>{children}</View>;
+/** 내용 한 덩어리. 테두리·그림자·둥근 모서리 없이 아래 구분선으로만 나눈다 */
+export function Section({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  return <View style={[s.section, style]}>{children}</View>;
 }
 
-/** 카드 위의 섹션 제목. 오른쪽에 개수나 링크를 붙일 수 있다 */
+/** 섹션 제목. 오른쪽에 개수나 링크를 붙일 수 있다 */
 export function SectionTitle({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
     <View style={s.sectionRow}>
@@ -100,11 +103,11 @@ export function SectionTitle({ children, right }: { children: ReactNode; right?:
   );
 }
 
-/** 행들을 흰 카드 하나에 담고 사이에 얇은 구분선을 넣는다 */
+/** 행 사이와 마지막 행 아래에 얇은 구분선을 넣는다 */
 export function ListGroup({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const items = Children.toArray(children).filter(isValidElement);
   return (
-    <View style={[s.card, style]}>
+    <View style={[s.list, style]}>
       {items.map((child, i) => (
         <Fragment key={i}>
           {i > 0 ? <View style={s.divider} /> : null}
@@ -145,7 +148,7 @@ export function StatusChip({ tone, label, icon }: { tone: GuardianTone; label: s
   );
 }
 
-/** 안내·경고 상자 */
+/** 안내·경고. 상자 대신 왼쪽 색 막대 + 아이콘 + 글자로 보인다 (색만으로 구분하지 않는다) */
 export function Notice({
   tone,
   title,
@@ -178,7 +181,7 @@ export function Notice({
       {onPress ? <Icon name="chevronRight" size={20} color={C.sub} /> : null}
     </>
   );
-  const style = [s.notice, { backgroundColor: t.bg, borderColor: t.fg }];
+  const style = [s.notice, { borderLeftColor: t.fg }];
   if (!onPress) return <View style={style}>{body}</View>;
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress} style={({ pressed }) => [style, pressed && s.pressed]}>
@@ -270,6 +273,7 @@ export function ListRow({
   icon,
   iconTone = 'info',
   title,
+  titleColor,
   subtitle,
   right,
   onPress,
@@ -282,6 +286,8 @@ export function ListRow({
   icon?: IconName;
   iconTone?: GuardianTone;
   title: string;
+  /** 제목 글자 색 (예: 확인할 일은 빨간 글자) */
+  titleColor?: string;
   subtitle?: ReactNode;
   right?: ReactNode;
   onPress?: () => void;
@@ -296,7 +302,9 @@ export function ListRow({
     <>
       {icon ? <IconBubble name={icon} tone={iconTone} /> : null}
       <View style={{ flex: 1, gap: 2 }}>
-        <GText variant="bodyStrong">{title}</GText>
+        <GText variant="bodyStrong" color={titleColor}>
+          {title}
+        </GText>
         {typeof subtitle === 'string' ? (
           <GText variant="sub" color={C.sub}>
             {subtitle}
@@ -463,21 +471,10 @@ const s = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderColor: C.border,
   },
-  card: {
-    backgroundColor: C.card,
-    borderRadius: guardian.radius.card,
-    borderWidth: 1,
-    borderColor: C.border,
-    overflow: 'hidden',
-    shadowColor: '#0B1F33',
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  cardPad: { padding: guardian.space.card, gap: 12 },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, marginBottom: -4, paddingHorizontal: 4 },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: C.border, marginLeft: 16 },
+  section: { gap: 12, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.line },
+  list: { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.line, marginTop: -8 },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, marginBottom: -4 },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: C.line },
   bubble: { alignItems: 'center', justifyContent: 'center' },
   chip: {
     flexDirection: 'row',
@@ -490,7 +487,7 @@ const s = StyleSheet.create({
     maxWidth: '100%',
   },
   chipText: { fontSize: 16, lineHeight: 21, fontWeight: '700', flexShrink: 1 },
-  notice: { flexDirection: 'row', gap: 12, padding: 14, borderRadius: guardian.radius.control, borderWidth: 1, alignItems: 'flex-start' },
+  notice: { flexDirection: 'row', gap: 12, paddingVertical: 4, paddingLeft: 12, borderLeftWidth: 3, alignItems: 'flex-start' },
   pressed: { opacity: 0.75 },
   btn: {
     flexDirection: 'row',
@@ -505,7 +502,7 @@ const s = StyleSheet.create({
   },
   btnDisabled: { backgroundColor: '#DDE3EA', borderColor: '#DDE3EA' },
   btnText: { fontSize: 17, lineHeight: 23, fontWeight: '700', textAlign: 'center', flexShrink: 1 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, minHeight: 64 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8, marginHorizontal: -8, paddingVertical: 14, minHeight: 64 },
   radio: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#8C99A8', alignItems: 'center', justifyContent: 'center' },
   radioOn: { borderColor: C.primary },
   radioDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: C.primary },
