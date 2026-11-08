@@ -1,19 +1,19 @@
 import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 
 import { api, CREATE_DEMO_FAMILY, guardianMessage, isApiError, type PairingCode } from '@/api';
 import { MOCK_INVITE_CODE } from '@/api/mock';
-import { BigButton } from '@/components/BigButton';
-import { Field } from '@/components/Field';
-import { Screen } from '@/components/Screen';
-import { T } from '@/components/Text';
+import { BrandMark } from '@/components/guardian/Brand';
+import { Card, ErrorText, GButton, GField, GScreen, GText, MockTag, Notice, StatusChip } from '@/components/guardian/ui';
 import { isElderShortCode, normalizeInviteCode } from '@/lib/pairCode';
 import { spokenTime } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
 import { registerGuardianPush } from '@/notify/guardianPush';
-import { colors } from '@/theme';
+import { guardian } from '@/theme';
+
+const C = guardian.color;
 
 const platform = Platform.OS === 'android' || Platform.OS === 'ios' ? Platform.OS : null;
 
@@ -71,50 +71,107 @@ export default function Connect() {
   if (code) {
     const until = new Date(code.expires_at);
     return (
-      <Screen scroll footer={<BigButton size="guardian" label="연결 끝났어요" onPress={() => router.replace('/guardian')} />}>
-        <T variant="title">어르신 폰에 앱을 설치하고, 이 QR을 어르신 폰으로 찍어주세요</T>
-        <View style={styles.qr} accessibilityLabel="연결용 QR">
-          <QRCode value={code.qr_payload} size={240} />
-        </View>
-        {code.short_code ? (
-          <>
-            <T>QR이 안 되면 이 숫자를 넣어주세요</T>
-            <T variant="title" style={styles.short}>
-              {code.short_code}
-            </T>
-          </>
-        ) : null}
-        <T variant="small" style={{ color: colors.subtle }}>
-          {spokenTime(until)}까지, 한 번만 쓸 수 있어요.
-        </T>
-        <BigButton size="guardian" variant="secondary" label="새 코드 받기" onPress={issue} />
-        <T variant="small" style={{ color: colors.subtle }}>
+      <GScreen footer={<GButton label="연결 끝났어요" icon="check" onPress={() => router.replace('/guardian')} />}>
+        <Steps current={2} />
+        <GText variant="title">어르신 폰에 앱을 설치하고, 이 QR을 어르신 폰으로 찍어주세요</GText>
+        <Card style={{ alignItems: 'center' }}>
+          <View style={styles.qr} accessible accessibilityLabel="연결용 QR">
+            <QRCode value={code.qr_payload} size={220} />
+          </View>
+          {code.short_code ? (
+            <View style={{ alignItems: 'center', gap: 4, alignSelf: 'stretch', borderTopWidth: 1, borderColor: C.divider, paddingTop: 12 }}>
+              <GText variant="sub" color={C.sub}>
+                QR이 안 되면 이 숫자를 넣어주세요
+              </GText>
+              <Text style={styles.short} accessibilityLabel={`연결 숫자 ${code.short_code.split('').join(' ')}`}>
+                {code.short_code}
+              </Text>
+            </View>
+          ) : null}
+          <StatusChip tone="neutral" icon="clock" label={`${spokenTime(until)}까지, 한 번만 쓸 수 있어요.`} />
+        </Card>
+        <GButton variant="ghost" icon="refresh" label="새 코드 받기" onPress={issue} />
+        <Notice tone="info" icon="shield">
           연결되면 어르신 폰에 동의 화면이 나와요.
-        </T>
-      </Screen>
+        </Notice>
+      </GScreen>
     );
   }
 
   if (hasToken) {
     return (
-      <Screen center>
-        <T>{error || '코드를 받고 있어요'}</T>
-      </Screen>
+      <GScreen center>
+        {error ? (
+          <ErrorText>{error}</ErrorText>
+        ) : (
+          <View style={{ alignItems: 'center', gap: 12 }}>
+            <ActivityIndicator color={C.primary} />
+            <GText>코드를 받고 있어요</GText>
+          </View>
+        )}
+      </GScreen>
     );
   }
 
   return (
-    <Screen scroll footer={<BigButton size="guardian" label="가족 만들기" onPress={create} busy={busy} disabled={!elder.trim() || !me.trim()} />}>
-      <T variant="title">어르신 폰과 연결해요</T>
-      <Field label="어르신을 뭐라고 부르세요?" value={elder} onChangeText={setElder} placeholder="예: 어머니" />
-      <Field label="어르신 화면에 보일 내 이름" value={me} onChangeText={setMe} placeholder="예: 민수" />
-      <T variant="small" style={{ color: colors.subtle }}>
-        어르신 화면의 말은 이 호칭으로 나와요. 어르신 호칭은 나중에 설정에서 바꿀 수 있어요.
-      </T>
-      {CREATE_DEMO_FAMILY ? <T variant="small" style={{ color: colors.mockBg }}>시연용 가족으로 만들어요 (is_demo)</T> : null}
-      {error ? <T style={{ color: colors.attention }}>{error}</T> : null}
-      <BigButton size="guardian" variant="secondary" label="초대 코드가 있어요" onPress={() => setJoining(true)} />
-    </Screen>
+    <GScreen footer={<GButton label="가족 만들기" busy={busy} disabled={!elder.trim() || !me.trim()} onPress={create} />}>
+      <View style={{ gap: 12 }}>
+        <BrandMark size={52} />
+        <GText variant="title">어르신 폰과 연결해요</GText>
+        <GText color={C.sub}>보호자 폰에서 가족을 만들고, 어르신 폰으로 QR을 찍으면 연결돼요.</GText>
+      </View>
+      <Steps current={1} />
+      <Card>
+        <GField label="어르신을 뭐라고 부르세요?" value={elder} onChangeText={setElder} placeholder="예: 어머니" />
+        <GField label="어르신 화면에 보일 내 이름" value={me} onChangeText={setMe} placeholder="예: 민수" />
+        <GText variant="sub" color={C.sub}>
+          어르신 화면의 말은 이 호칭으로 나와요. 어르신 호칭은 나중에 설정에서 바꿀 수 있어요.
+        </GText>
+      </Card>
+      {CREATE_DEMO_FAMILY ? <MockTag label="시연용 가족으로 만들어요 (is_demo)" /> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
+      <Card padded={false}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="초대 코드가 있어요"
+          accessibilityHint="다른 보호자가 만든 가족에 합류해요"
+          onPress={() => setJoining(true)}
+          style={({ pressed }) => [styles.joinRow, pressed && { backgroundColor: C.neutralSoft }]}
+        >
+          <View style={{ flex: 1, gap: 2 }}>
+            <GText variant="bodyStrong">초대 코드가 있어요</GText>
+            <GText variant="sub" color={C.sub}>
+              다른 보호자가 이미 가족을 만들었다면 합류해요
+            </GText>
+          </View>
+          <GText variant="label" color={C.primaryStrong}>
+            합류 ›
+          </GText>
+        </Pressable>
+      </Card>
+    </GScreen>
+  );
+}
+
+/** 연결 단계 표시: 1 가족 만들기 → 2 QR 연결 → 3 어르신 동의 */
+function Steps({ current }: { current: 1 | 2 }) {
+  const steps = ['가족 만들기', 'QR로 연결', '어르신 동의'];
+  return (
+    <View style={styles.steps} accessible accessibilityLabel={`3단계 중 ${current}단계: ${steps[current - 1]}`}>
+      {steps.map((label, i) => {
+        const n = i + 1;
+        const done = n < current;
+        const on = n === current;
+        return (
+          <View key={label} style={styles.step}>
+            <View style={[styles.stepDot, (on || done) && { backgroundColor: C.primary, borderColor: C.primary }]}>
+              <Text style={[styles.stepNum, (on || done) && { color: C.onPrimary }]}>{done ? '✓' : n}</Text>
+            </View>
+            <Text style={[styles.stepLabel, on && { color: C.text, fontWeight: '700' }]}>{label}</Text>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
@@ -154,26 +211,30 @@ function JoinFamily({ onBack, onTokenCleared }: { onBack: () => void; onTokenCle
   };
 
   return (
-    <Screen
-      scroll
+    <GScreen
       footer={
         <>
-          <BigButton size="guardian" label="합류하기" onPress={join} busy={busy} disabled={!normalizeInviteCode(input) || !name.trim()} />
-          <BigButton size="guardian" variant="secondary" label="가족 만들기로 돌아가기" onPress={onBack} disabled={busy} />
+          <GButton label="합류하기" busy={busy} disabled={!normalizeInviteCode(input) || !name.trim()} onPress={join} />
+          <GButton variant="ghost" label="가족 만들기로 돌아가기" disabled={busy} onPress={onBack} />
         </>
       }
     >
       <Stack.Screen options={{ title: '보호자로 합류' }} />
-      <T variant="title">초대 코드로 가족에 합류해요</T>
-      <Field label="초대 코드" value={input} onChangeText={setInput} placeholder="받은 코드나 링크를 붙여넣기" verbatim />
-      <Field label="어르신 화면에 보일 내 이름" value={name} onChangeText={setName} placeholder="예: 민지" />
-      {error ? <T style={{ color: colors.attention }}>{error}</T> : null}
+      <View style={{ gap: 6 }}>
+        <GText variant="title">초대 코드로 가족에 합류해요</GText>
+        <GText color={C.sub}>처음 보호자에게 받은 보호자 초대 코드를 넣어 주세요.</GText>
+      </View>
+      <Card>
+        <GField label="초대 코드" value={input} onChangeText={setInput} placeholder="받은 코드나 링크를 붙여넣기" verbatim />
+        <GField label="어르신 화면에 보일 내 이름" value={name} onChangeText={setName} placeholder="예: 민지" />
+      </Card>
+      {error ? <ErrorText>{error}</ErrorText> : null}
       {api.mode === 'mock' ? (
-        <Pressable accessibilityRole="button" onPress={() => setInput(MOCK_INVITE_CODE)} style={{ padding: 12 }}>
-          <Text style={styles.mock}>개발용: 모의 초대 코드 넣기 (실제 서버 아님)</Text>
+        <Pressable accessibilityRole="button" onPress={() => setInput(MOCK_INVITE_CODE)} style={styles.mockBtn}>
+          <MockTag label="개발용: 모의 초대 코드 넣기 (실제 서버 아님)" />
         </Pressable>
       ) : null}
-    </Screen>
+    </GScreen>
   );
 }
 
@@ -185,7 +246,22 @@ function joinMessage(e: unknown): string {
 }
 
 const styles = StyleSheet.create({
-  qr: { alignSelf: 'center', padding: 16, backgroundColor: '#FFF', borderWidth: 2, borderColor: colors.border, borderRadius: 12 },
-  short: { fontSize: 48, letterSpacing: 8, textAlign: 'center', lineHeight: 60 },
-  mock: { fontSize: 18, color: colors.mockBg, textDecorationLine: 'underline', textAlign: 'center' },
+  qr: { padding: 12, backgroundColor: '#FFF', borderRadius: 12 },
+  short: { fontSize: 44, letterSpacing: 8, textAlign: 'center', lineHeight: 54, fontWeight: '800', color: C.text, fontVariant: ['tabular-nums'] },
+  joinRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, minHeight: 64 },
+  mockBtn: { minHeight: 48, justifyContent: 'center' },
+  steps: { flexDirection: 'row', gap: 8 },
+  step: { flex: 1, alignItems: 'center', gap: 6 },
+  stepDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#C5CEDA',
+    backgroundColor: C.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepNum: { fontSize: 16, fontWeight: '800', color: C.sub },
+  stepLabel: { fontSize: 16, color: C.sub, textAlign: 'center' },
 });

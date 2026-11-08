@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import { api, guardianMessage, type TimeOfDay } from '@/api';
-import { BigButton } from '@/components/BigButton';
-import { Screen } from '@/components/Screen';
-import { T } from '@/components/Text';
+import { Card, ErrorText, GButton, GScreen, GText, IconBubble, Notice } from '@/components/guardian/ui';
 import { goBackOr } from '@/lib/nav';
 import { buildSlots, cellMapping } from '@/lib/slots';
 import { spokenHHMM, TIME_OF_DAY_LABELS } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
 import { useMe } from '@/lib/useMe';
-import { colors } from '@/theme';
+import { guardian } from '@/theme';
+
+const C = guardian.color;
 
 const ORDER: TimeOfDay[] = ['morning', 'noon', 'evening', 'bedtime'];
 const STEP_MIN = 10;
@@ -43,9 +43,9 @@ export default function Schedule() {
 
   if (boxError) {
     return (
-      <Screen center>
-        <T variant="title">{guardianMessage(boxError)}</T>
-      </Screen>
+      <GScreen center>
+        <Notice tone="danger">{guardianMessage(boxError)}</Notice>
+      </GScreen>
     );
   }
   if (!box || !schedule) return null;
@@ -68,34 +68,58 @@ export default function Schedule() {
   };
 
   return (
-    <Screen scroll footer={<BigButton size="guardian" label="저장" busy={busy} disabled={!slots} onPress={save} />}>
-      {!slots ? <T style={{ color: colors.attention }}>! 약통 칸을 요일·시간대로 이을 수 없어요. 약통을 다시 등록해 주세요.</T> : null}
-      {schedule.slots.length === 0 ? <T>처음 정하는 시각이에요. 드시는 시각에 맞게 고쳐 주세요.</T> : null}
+    <GScreen footer={<GButton label="저장" icon="check" busy={busy} disabled={!slots} onPress={save} />}>
+      {!slots ? (
+        <Notice tone="warn" title="약통 칸을 요일·시간대로 이을 수 없어요.">
+          약통을 다시 등록해 주세요.
+        </Notice>
+      ) : null}
+      {schedule.slots.length === 0 ? (
+        <Notice tone="info" icon="clock">
+          처음 정하는 시각이에요. 드시는 시각에 맞게 고쳐 주세요.
+        </Notice>
+      ) : null}
       {present.map((k) => (
-        <View key={k} style={styles.row}>
-          <T variant="title">{TIME_OF_DAY_LABELS[k]}</T>
-          <T variant="title">{spokenHHMM(times[k]!)}</T>
-          <View style={styles.steps}>
+        <Card key={k}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <IconBubble name="clock" tone="info" />
             <View style={{ flex: 1 }}>
-              <BigButton size="guardian" variant="secondary" label={`${STEP_MIN}분 빠르게`} onPress={() => setTimes((t) => ({ ...t, [k]: shift(t[k]!, -STEP_MIN) }))} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <BigButton size="guardian" variant="secondary" label={`${STEP_MIN}분 늦게`} onPress={() => setTimes((t) => ({ ...t, [k]: shift(t[k]!, STEP_MIN) }))} />
+              <GText variant="label" color={C.sub}>
+                {TIME_OF_DAY_LABELS[k]}
+              </GText>
+              <GText variant="title" accessibilityLabel={`${TIME_OF_DAY_LABELS[k]} ${spokenHHMM(times[k]!)}`}>
+                {spokenHHMM(times[k]!)}
+              </GText>
             </View>
           </View>
-        </View>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <GButton
+                variant="secondary"
+                icon="minus"
+                label={`${STEP_MIN}분 빠르게`}
+                accessibilityLabel={`${TIME_OF_DAY_LABELS[k]} ${STEP_MIN}분 빠르게`}
+                onPress={() => setTimes((t) => ({ ...t, [k]: shift(t[k]!, -STEP_MIN) }))}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <GButton
+                variant="secondary"
+                icon="plus"
+                label={`${STEP_MIN}분 늦게`}
+                accessibilityLabel={`${TIME_OF_DAY_LABELS[k]} ${STEP_MIN}분 늦게`}
+                onPress={() => setTimes((t) => ({ ...t, [k]: shift(t[k]!, STEP_MIN) }))}
+              />
+            </View>
+          </View>
+        </Card>
       ))}
       {timing ? (
-        <T variant="small" style={{ color: colors.subtle }}>
-          답이 없으면 {timing.reask_offsets_min.join('분, ')}분 뒤에 다시 여쭤보고, {timing.no_response_handoff_min}분이 지나면 알려드려요.
-        </T>
+        <Notice tone="neutral" icon="bell">
+          {`답이 없으면 ${timing.reask_offsets_min.join('분, ')}분 뒤에 다시 여쭤보고, ${timing.no_response_handoff_min}분이 지나면 알려드려요.`}
+        </Notice>
       ) : null}
-      {error ? <T style={{ color: colors.attention }}>{error}</T> : null}
-    </Screen>
+      {error ? <ErrorText>{error}</ErrorText> : null}
+    </GScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  row: { borderWidth: 2, borderColor: colors.border, borderRadius: 16, padding: 16, gap: 8 },
-  steps: { flexDirection: 'row', gap: 12 },
-});
