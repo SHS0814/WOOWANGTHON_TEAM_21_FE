@@ -1,6 +1,6 @@
 // 보호자 화면·처음 설정 화면 전용 구성 요소 (R-047, T-FE14).
 // 어르신 화면이 쓰는 공용 컴포넌트(Text, BigButton, Screen 등)는 건드리지 않고 여기서 새로 만든다.
-import { Children, Fragment, isValidElement, useState, type ReactNode } from 'react';
+import { Children, Fragment, isValidElement, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -43,10 +43,20 @@ interface ScreenProps {
   center?: boolean;
   /** 하단 탭 안의 화면이면 탭이 아래 여백을 맡는다 */
   inTabs?: boolean;
+  /** 한 화면에 담아야 하는 곳(홈): 구획 사이 여백을 줄인다 */
+  dense?: boolean;
+  /** 스크롤 영역 높이와 내용 높이를 알려준다 (홈이 넘치지 않게 줄이는 데 쓴다) */
+  onMeasure?: (viewport: number, content: number) => void;
 }
 
-export function GScreen({ children, title, eyebrow, footer, scroll = true, center, inTabs }: ScreenProps) {
+export function GScreen({ children, title, eyebrow, footer, scroll = true, center, inTabs, dense, onMeasure }: ScreenProps) {
   const insets = useSafeAreaInsets();
+  const measured = useRef({ viewport: 0, content: 0 });
+  const measure = (k: 'viewport' | 'content', v: number) => {
+    measured.current[k] = v;
+    const m = measured.current;
+    if (onMeasure && m.viewport && m.content) onMeasure(m.viewport, m.content);
+  };
   const bottom = inTabs ? 0 : insets.bottom;
   const head =
     title || eyebrow ? (
@@ -63,11 +73,16 @@ export function GScreen({ children, title, eyebrow, footer, scroll = true, cente
         ) : null}
       </View>
     ) : null;
-  const content = [s.content, center && s.center, !footer && { paddingBottom: 24 + bottom }];
+  const content = [s.content, dense && { gap: 10, paddingTop: 10 }, center && s.center, !footer && { paddingBottom: 24 + bottom }];
   return (
     <View style={s.root}>
       {scroll ? (
-        <ScrollView contentContainerStyle={content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={content}
+          keyboardShouldPersistTaps="handled"
+          onLayout={onMeasure ? (e) => measure('viewport', e.nativeEvent.layout.height) : undefined}
+          onContentSizeChange={onMeasure ? (_, h) => measure('content', h) : undefined}
+        >
           {head}
           {children}
         </ScrollView>
@@ -282,6 +297,7 @@ export function ListRow({
   accessibilityRole,
   accessibilityState,
   children,
+  dense,
 }: {
   icon?: IconName;
   iconTone?: GuardianTone;
@@ -297,11 +313,13 @@ export function ListRow({
   accessibilityState?: { selected?: boolean; checked?: boolean };
   /** 행 아래에 붙는 내용 (예: 칩, 경고) */
   children?: ReactNode;
+  /** 한 화면에 담아야 하는 곳(홈)의 낮은 행. 터치 높이는 48 이상 유지 */
+  dense?: boolean;
 }) {
   const inner = (
     <>
-      {icon ? <IconBubble name={icon} tone={iconTone} /> : null}
-      <View style={{ flex: 1, gap: 2 }}>
+      {icon ? <IconBubble name={icon} tone={iconTone} size={dense ? 36 : 40} /> : null}
+      <View style={{ flex: 1, gap: dense ? 0 : 2 }}>
         <GText variant="bodyStrong" color={titleColor}>
           {title}
         </GText>
@@ -318,14 +336,15 @@ export function ListRow({
       {chevron ? <Icon name="chevronRight" size={20} color={C.muted} /> : null}
     </>
   );
-  if (!onPress) return <View style={s.row}>{inner}</View>;
+  const rowStyle = [s.row, dense && s.rowDense];
+  if (!onPress) return <View style={rowStyle}>{inner}</View>;
   return (
     <Pressable
       accessibilityRole={accessibilityRole ?? 'button'}
       accessibilityLabel={accessibilityLabel}
       accessibilityState={accessibilityState}
       onPress={onPress}
-      style={({ pressed }) => [s.row, pressed && { backgroundColor: C.neutralSoft }]}
+      style={({ pressed }) => [rowStyle, pressed && { backgroundColor: C.neutralSoft }]}
     >
       {inner}
     </Pressable>
@@ -503,6 +522,7 @@ const s = StyleSheet.create({
   btnDisabled: { backgroundColor: '#DDE3EA', borderColor: '#DDE3EA' },
   btnText: { fontSize: 17, lineHeight: 23, fontWeight: '700', textAlign: 'center', flexShrink: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8, marginHorizontal: -8, paddingVertical: 14, minHeight: 64 },
+  rowDense: { paddingVertical: 8, minHeight: 52 },
   radio: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#8C99A8', alignItems: 'center', justifyContent: 'center' },
   radioOn: { borderColor: C.primary },
   radioDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: C.primary },
