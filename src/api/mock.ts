@@ -205,6 +205,29 @@ function timeOfDayFromLabel(label: string): TimeOfDay | null {
   return null;
 }
 
+const WEEKDAY_NAMES = ['월', '화', '수', '목', '금', '토', '일'];
+const hasWeekdays = (labels: string[]) => labels.length === 7 && labels.every((l, i) => l.startsWith(WEEKDAY_NAMES[i]));
+
+/** 하루 약통(R-054): 같은 칸을 여러 요일에 쓰는 일정. 일주일 약통은 칸마다 요일이 하나뿐이다 */
+function isDailySchedule(slots: { cell_id: string }[]): boolean {
+  return new Set(slots.map((x) => x.cell_id)).size < slots.length;
+}
+
+/** 시드 약통의 일정. 요일 칸이 있으면 줄마다 7칸(일주일 약통), 없으면 칸마다 월~일(하루 약통) */
+function seedSlots(layout: Layout): Omit<Slot, 'id'>[] {
+  const tod = (label: string | undefined) => timeOfDayFromLabel(label ?? '') ?? 'evening';
+  if (hasWeekdays(layout.col_labels)) {
+    return layout.cells.map((c) => {
+      const t = tod(layout.row_labels[c.row]);
+      return { weekday: c.col, time_of_day: t, dose_time: MOCK_SEED.dose_times[t], cell_id: c.id };
+    });
+  }
+  return layout.cells.flatMap((c) => {
+    const t = tod(layout.rows === 1 ? layout.col_labels[c.col] : layout.row_labels[c.row]);
+    return [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, time_of_day: t, dose_time: MOCK_SEED.dose_times[t], cell_id: c.id }));
+  });
+}
+
 function defaultLayout(): Layout {
   const { row_labels, col_labels } = MOCK_SEED.pillbox;
   const cells = [];
@@ -367,10 +390,7 @@ class MockApi implements Api {
     s.guardian = { ...this.newDevice('guardian', MOCK_SEED.family.guardian_display_name), is_me: false };
     const layout = defaultLayout();
     s.pillbox = { id: this.id('pb'), layout, registered_photo_id: '', confirmed_at: iso(new Date()), active: true };
-    s.slots = layout.cells.map((c) => {
-      const tod = timeOfDayFromLabel(layout.row_labels[c.row]) ?? 'evening';
-      return { id: this.id('s'), weekday: c.col, time_of_day: tod, dose_time: MOCK_SEED.dose_times[tod], cell_id: c.id };
-    });
+    s.slots = seedSlots(layout).map((x) => ({ ...x, id: this.id('s') }));
     s.refills = [this.makeRefill(null, 'registration')];
     s.eventsDate = '';
   }
@@ -460,6 +480,7 @@ class MockApi implements Api {
     const layout = defaultLayout();
     return {
       photo: this.photoOf(photo),
+      // 3.10: 시간대는 행 라벨에서 추정 (하루 약통 1×3은 행 라벨이 '하루'라 null → 앱이 칸 이름에서 읽는다)
       proposal: { layout, suggested_time_of_day: layout.row_labels.map(timeOfDayFromLabel), uncertain: false },
       is_mock: true,
       provider: 'mock',
@@ -512,15 +533,23 @@ class MockApi implements Api {
     if (!s.pillbox) throw new ApiError(404, 'pillbox_required', '모의: 약통 없음');
     const now = new Date();
     const wd = mondayIndex(now);
-    const taken = new Set(s.events.filter((e) => e.outcome === 'taken').map((e) => e.slot.cell_id));
-    // 모의 계산: 주간 약통을 월요일에 채웠다고 보고, 오늘 아직 안 드신 칸과 이후 칸을 남은 칸으로 센다
+    const daily = isDailySchedule(s.slots);
+    const lastRefillAt = s.refills.length ? new Date(s.refills[s.refills.length - 1].filled_at).getTime() : 0;
+    // 하루 약통은 마지막 리필 뒤에 드신 칸만 빈 칸으로 본다 (저녁 뒤 채우면 다시 3칸)
+    const taken = new Set(
+      s.events
+        .filter((e) => e.outcome === 'taken' && (!daily || new Date(e.taken_at ?? e.scheduled_at).getTime() >= lastRefillAt))
+        .map((e) => e.slot.cell_id),
+    );
+    // 모의 계산: 주간 약통을 월요일에 채웠다고 보고, 오늘 아직 안 드신 칸과 이후 칸을 남은 칸으로 센다.
+    // 하루 약통(R-054)은 오늘 칸 중 아직 안 드신 칸만 남은 칸이다. 리필 기준(threshold)은 BE(T-BE9) 규칙이 정해지기 전까지 모의로 0 (다 쓰면 리필)
     const remaining = s.slots
       .slice()
       .sort((a, b) => weekMinutes(a) - weekMinutes(b))
-      .filter((slot) => slot.weekday > wd || (slot.weekday === wd && !taken.has(slot.cell_id)));
+      .filter((slot) => (daily ? slot.weekday === wd && !taken.has(slot.cell_id) : slot.weekday > wd || (slot.weekday === wd && !taken.has(slot.cell_id))));
     const last = remaining[remaining.length - 1];
     const perDay = Math.max(0, ...[0, 1, 2, 3, 4, 5, 6].map((d) => s.slots.filter((x) => x.weekday === d).length));
-    const threshold = perDay * 2;
+    const threshold = daily ? 0 : perDay * 2;
     const coveredDate = last ? new Date(now.getTime() + (last.weekday - wd) * 86_400_000) : null;
     return copy({
       pillbox: s.pillbox,
@@ -545,11 +574,13 @@ class MockApi implements Api {
     if (!s.pillbox) throw new ApiError(409, 'pillbox_required', '모의');
     const cellIds = new Set(s.pillbox.layout.cells.map((c) => c.id));
     const seen = new Set<string>();
+    // 3.14 (R-054): 같은 칸+요일, 같은 요일+시간대는 두 번 불가. 같은 칸을 여러 요일에 쓰는 것(하루 약통)은 된다
     for (const x of slots) {
-      const key = `${x.weekday}-${x.time_of_day}`;
-      if (!cellIds.has(x.cell_id) || seen.has(x.cell_id) || seen.has(key)) throw new ApiError(422, 'validation_error', '모의: 칸 중복 또는 없는 칸');
-      seen.add(x.cell_id);
-      seen.add(key);
+      const cellKey = `c:${x.cell_id}-${x.weekday}`;
+      const todKey = `t:${x.weekday}-${x.time_of_day}`;
+      if (!cellIds.has(x.cell_id) || seen.has(cellKey) || seen.has(todKey)) throw new ApiError(422, 'validation_error', '모의: 칸 중복 또는 없는 칸');
+      seen.add(cellKey);
+      seen.add(todKey);
     }
     s.slots = slots.map((x) => ({ ...x, id: this.id('s') }));
     s.scheduleUpdatedAt = iso(new Date());
@@ -774,7 +805,11 @@ class MockApi implements Api {
 
   /** backend.md 5.2 기대 상태 계산 (모의: 기준선은 모두 찬 칸, 지난 날 칸은 드셨다고 본다) */
   private expectedFor(target: DoseEvent): Map<string, ExpectedState> {
-    const order = this.s.slots.slice().sort((a, b) => weekMinutes(a) - weekMinutes(b));
+    // 하루 약통(R-054)은 매일 채운다고 보고 오늘 요일 칸들만 순서대로 본다
+    const wd = mondayIndex(new Date(target.scheduled_at));
+    const order = this.s.slots
+      .filter((x) => !isDailySchedule(this.s.slots) || x.weekday === wd)
+      .sort((a, b) => weekMinutes(a) - weekMinutes(b));
     const t = order.findIndex((x) => x.cell_id === target.slot.cell_id);
     const byCell = new Map(this.s.events.map((e) => [e.slot.cell_id, e]));
     const out = new Map<string, ExpectedState>();

@@ -1,5 +1,5 @@
 import { Redirect, router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { api, type DoseEvent } from '@/api';
@@ -15,6 +15,8 @@ import { useMe } from '@/lib/useMe';
 import { guardian } from '@/theme';
 
 const C = guardian.color;
+/** 확인할 일을 펼쳐 두는 최대 건수 */
+const FIT_MAX = 2;
 
 /**
  * G4 홈 (R-051, T-FE16). 스크롤 없이 한 화면: 오늘 요약(가로 시간축) → 확인할 일(정해진 개수, 나머지는 펼침)
@@ -32,10 +34,19 @@ export default function GuardianHome() {
   const { data: today } = useApiData(() => api.today().catch(() => null), [], { pollMs: POLL_MS });
   const [expanded, setExpanded] = useState(false);
   const { height } = useWindowDimensions();
-  // 확인할 일을 몇 건까지 펼쳐 둘지. 기본 2건, 화면이 넘치면 1건 → 0건으로 줄인다 (R-051: 스크롤 없이 한 화면)
-  const [fit, setFit] = useState(2);
+  // 확인할 일을 몇 건까지 펼쳐 둘지 (R-051: 스크롤 없이 한 화면, R-053 후속 2).
+  // 기본 2건. 넘치면 줄이고, 데이터가 늦게 와서 한때 넘쳤다가 공간이 남으면(행 높이만큼) 다시 늘린다.
+  // 늘렸다가 다시 넘치면 그 개수에서 멈춘다 (오락가락 방지)
+  const [fit, setFit] = useState(FIT_MAX);
+  const rowH = useRef(0);
+  const ceiling = useRef(FIT_MAX);
+  const grew = useRef(false);
   const openCount = open?.length ?? 0;
-  useEffect(() => setFit(2), [openCount, height]);
+  useEffect(() => {
+    ceiling.current = FIT_MAX;
+    grew.current = false;
+    setFit(FIT_MAX);
+  }, [openCount, height]);
 
   if (hasToken === undefined) return null;
   if (!hasToken) return <Redirect href="/guardian/connect" />;
@@ -55,7 +66,17 @@ export default function GuardianHome() {
   const compact = height < 760;
   const limit = fit;
   const onMeasure = (viewport: number, content: number) => {
-    if (!expanded && content > viewport + 1 && fit > 0) setFit((f) => Math.max(0, f - 1));
+    if (expanded) return;
+    const slack = viewport - content;
+    if (slack < -1 && fit > 0) {
+      // 방금 늘려서 넘친 것이면 그 아래 개수를 상한으로 둔다
+      if (grew.current) ceiling.current = fit - 1;
+      grew.current = false;
+      setFit(fit - 1);
+    } else if (fit < Math.min(ceiling.current, openCount) && rowH.current > 0 && slack >= rowH.current + 2) {
+      grew.current = true;
+      setFit(fit + 1);
+    }
   };
   const mockTags =
     summary && (summary.includes_mock || summary.includes_simulated) ? (
@@ -178,11 +199,7 @@ export default function GuardianHome() {
               <StatusChip tone="neutral" label={`${c.pending}번 남음`} />
             ) : null}
           </View>
-          {items.some((e) => !e.carried_over) ? (
-            <DayTimeline items={items} now={now} onOpen={openEvent} extra={mockTags} />
-          ) : (
-            mockTags
-          )}
+          {items.some((e) => !e.carried_over) ? <DayTimeline items={items} now={now} onOpen={openEvent} extra={mockTags} /> : mockTags}
         </Section>
       ) : null}
 
@@ -192,24 +209,25 @@ export default function GuardianHome() {
           <SectionTitle right={<StatusChip tone="danger" label={`${openList.length}건`} />}>확인할 일</SectionTitle>
           <ListGroup style={{ marginTop: 4 }}>
             {shown.map((h) => (
-              <ListRow
-                key={h.id}
-                dense
-                icon="alert"
-                iconTone="danger"
-                title={reasonTitle(h.reason)}
-                titleColor={C.danger}
-                subtitle={
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 2 }}>
-                    <GText variant="sub" color={C.sub}>
-                      {doseName(h.dose_event)} 약 · {spokenTime(new Date(h.notified_at))} 알림
-                    </GText>
-                    {h.dose_event.is_simulated ? <MockTag label="시뮬레이션" a11y="시뮬레이션, 실제 복약 시각 알림 아님" /> : null}
-                  </View>
-                }
-                accessibilityLabel={`${doseName(h.dose_event)} 약, ${reasonTitle(h.reason)}${h.dose_event.is_simulated ? ', 시뮬레이션' : ''}. 자세히 보기`}
-                onPress={() => router.push({ pathname: '/guardian/handoff/[id]', params: { id: h.id } })}
-              />
+              <View key={h.id} onLayout={(e) => (rowH.current = Math.max(rowH.current, e.nativeEvent.layout.height))}>
+                <ListRow
+                  dense
+                  icon="alert"
+                  iconTone="danger"
+                  title={reasonTitle(h.reason)}
+                  titleColor={C.danger}
+                  subtitle={
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 2 }}>
+                      <GText variant="sub" color={C.sub}>
+                        {doseName(h.dose_event)} 약 · {spokenTime(new Date(h.notified_at))} 알림
+                      </GText>
+                      {h.dose_event.is_simulated ? <MockTag label="시뮬레이션" a11y="시뮬레이션, 실제 복약 시각 알림 아님" /> : null}
+                    </View>
+                  }
+                  accessibilityLabel={`${doseName(h.dose_event)} 약, ${reasonTitle(h.reason)}${h.dose_event.is_simulated ? ', 시뮬레이션' : ''}. 자세히 보기`}
+                  onPress={() => router.push({ pathname: '/guardian/handoff/[id]', params: { id: h.id } })}
+                />
+              </View>
             ))}
             {openList.length > limit ? (
               <Pressable

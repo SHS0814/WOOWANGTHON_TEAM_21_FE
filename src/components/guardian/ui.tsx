@@ -76,7 +76,14 @@ export function GScreen({ children, title, eyebrow, footer, scroll = true, cente
         ) : null}
       </View>
     ) : null;
-  const content = [s.content, dense && { gap: 10, paddingTop: 10 }, center && s.center, !footer && { paddingBottom: 24 + bottom }];
+  // onMeasure 를 쓰면 내용 상자를 늘리지 않는다 (늘리면 내용 높이가 화면 높이보다 작게 재지지 않아 남는 공간을 알 수 없다, R-053 후속 2)
+  const content = [
+    s.content,
+    dense && { gap: 10, paddingTop: 10 },
+    center && s.center,
+    !footer && { paddingBottom: 24 + bottom },
+    onMeasure && !center && { flexGrow: 0 },
+  ];
   return (
     <View style={s.root}>
       {scroll ? (
