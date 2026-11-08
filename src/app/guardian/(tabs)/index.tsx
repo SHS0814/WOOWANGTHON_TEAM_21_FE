@@ -94,8 +94,10 @@ export default function GuardianHome() {
   // 다음 할 일은 화면 아래에 고정한다 (확인할 일을 펼쳐도 보인다).
   // 기본은 다음 복약. 약통 남은 칸 행은 보호자가 채우는 집(elder_refill_prompt false)에서 곧 채워야 할 때만 (R-071)
   const showRefill = me.family.has_pillbox && !settings?.elder_refill_prompt && !!box?.refill_status.needs_refill;
+  // 약통 상태 불일치는 이상 신호라 리필 행 숨김과 관계없이 보인다 (메인 에이전트 결정, T-FE25 검토)
+  const showMismatch = me.family.has_pillbox && !!box?.pillbox_mismatch.detected && !showRefill;
   const nextRows =
-    next || showRefill ? (
+    next || showRefill || showMismatch ? (
       <View>
         {compact ? null : (
           <GText variant="label" color={C.sub} accessibilityRole="header">
@@ -109,6 +111,18 @@ export default function GuardianHome() {
               icon="clock"
               title={`다음 복약 · ${TIME_OF_DAY_LABELS[next.time_of_day]}`}
               subtitle={`${dateKey(new Date(next.scheduled_at)) === dateKey(now) ? '오늘' : longDate(new Date(next.scheduled_at))} ${spokenTime(new Date(next.scheduled_at))}에 여쭤봐요`}
+            />
+          ) : null}
+          {showMismatch ? (
+            <ListRow
+              dense
+              icon="pillbox"
+              iconTone="warn"
+              title="약통 상태가 기록과 달라요"
+              titleColor={C.warn}
+              subtitle="약통 채우기 화면에서 확인해요"
+              accessibilityLabel="약통 상태가 기록과 달라요. 약통 채우기 화면 열기"
+              onPress={() => router.push('/guardian/refill')}
             />
           ) : null}
           {showRefill && box ? (

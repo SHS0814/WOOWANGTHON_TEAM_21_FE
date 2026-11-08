@@ -134,9 +134,9 @@ export default function PillboxRegister() {
     setError('');
     try {
       const res = await api.createPillbox({ photo_id: detected.photo.id, layout });
-      // R-071: 하루 약통은 어르신이 매일 채우므로 마지막 칸 뒤 "약통을 채워 주세요" 안내를 켠다 (설정에서 끌 수 있음).
-      // 약통 등록은 이미 끝났으므로 이 저장이 실패해도 등록 흐름은 막지 않는다
-      if (pillboxKind(layout) === 'daily') await api.putSettings({ elder_refill_prompt: true }).catch(() => null);
+      // R-071: 하루 약통은 어르신이 매일 채우므로 마지막 칸 뒤 "약통을 채워 주세요" 안내를 켜고, 일주일 약통은 보호자가 채우므로 끈다
+      // (재등록 포함, 설정 스위치로 다시 바꿀 수 있음). 약통 등록은 이미 끝났으므로 이 저장이 실패해도 등록 흐름은 막지 않는다
+      await api.putSettings({ elder_refill_prompt: pillboxKind(layout) === 'daily' }).catch(() => null);
       if (res.refill.needs_review) {
         setRefill(res.refill);
         setStep('review');

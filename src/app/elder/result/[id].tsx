@@ -10,6 +10,8 @@ import { guardianName, useMe } from '@/lib/useMe';
 type Kind = 'done' | 'retake' | 'remind' | 'handoff' | 'error';
 
 const AUTO_HOME_MS = 5000;
+/** R-071: "약통을 채워 주세요" 줄이 있으면 읽을 시간을 더 준다 */
+const AUTO_HOME_REFILL_MS = 12000;
 
 /**
  * E7 결과 (api.md 3.18 result 표)
@@ -26,9 +28,9 @@ export default function Result() {
   const autoHome = kind === 'done' || kind === 'handoff';
   useEffect(() => {
     if (!autoHome) return;
-    const t = setTimeout(() => router.dismissTo('/elder'), AUTO_HOME_MS);
+    const t = setTimeout(() => router.dismissTo('/elder'), kind === 'done' && refill ? AUTO_HOME_REFILL_MS : AUTO_HOME_MS);
     return () => clearTimeout(t);
-  }, [autoHome]);
+  }, [autoHome, kind, refill]);
 
   if (!me) return null;
   const retake = () => router.replace({ pathname: '/elder/camera/[id]', params: { id } });
