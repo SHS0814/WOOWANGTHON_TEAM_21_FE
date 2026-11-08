@@ -1,7 +1,7 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import { api, isApiError, type PairRequest } from '@/api';
 import { BigButton } from '@/components/BigButton';
@@ -19,6 +19,15 @@ export default function Connect() {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const pairing = useRef(false);
+  // 키보드가 뜨면 숫자 입력칸과 "숫자로 연결" 버튼이 키보드 위에 보이게 맨 아래로 스크롤한다 (T-FE23, Android 15+)
+  const scroll = useRef<ScrollViewInstance>(null);
+  const input = useRef<TextInputInstance>(null);
+  useEffect(() => {
+    const sub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => {
+      if (input.current?.isFocused()) setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 150);
+    });
+    return () => sub.remove();
+  }, []);
 
   const pair = async (req: PairRequest) => {
     if (pairing.current) return;
@@ -40,7 +49,7 @@ export default function Connect() {
   };
 
   return (
-    <Screen scroll>
+    <Screen scroll keyboardAware scrollRef={scroll}>
       <T variant="elderTitle">보호자 폰에 뜬 QR을 이 폰으로 찍어주세요</T>
       {permission?.granted ? (
         <View style={styles.scanner}>
@@ -59,6 +68,7 @@ export default function Connect() {
       )}
       <T variant="elderBody">QR이 안 되면 보호자 폰에 보이는 6자리 숫자를 넣어주세요.</T>
       <TextInput
+        ref={input}
         value={code}
         onChangeText={(t) => setCode(t.replace(/\D/g, '').slice(0, 6))}
         keyboardType="number-pad"
