@@ -29,7 +29,9 @@ export default function GuardianHome() {
   // 아래 넷은 서버가 아직 구현 중이거나 약통이 없으면 실패할 수 있다 → 실패하면 그 부분만 숨긴다
   const { data: open } = useApiData(() => api.handoffs('open').catch(() => null), [], { pollMs: POLL_MS });
   const { data: day } = useApiData(() => api.summaries('day', dateKey(new Date()), dateKey(new Date())).catch(() => null), [], { pollMs: POLL_MS });
-  const { data: box } = useApiData(() => api.currentPillbox().catch(() => null));
+  const { data: box } = useApiData(() => api.currentPillbox().catch(() => null), [], { pollMs: POLL_MS });
+  // R-071: 어르신이 약통을 채우는 집(elder_refill_prompt)이면 약통 채우기는 보호자 할 일이 아니다. 못 읽으면 기본값(false)
+  const { data: settings } = useApiData(() => api.settings().catch(() => null));
   // 어르신 폰 알림 준비가 안 됐을 때만 경고 (R-032, 원칙 2: 정상이면 아무것도 안 보인다)
   const { data: today } = useApiData(() => api.today().catch(() => null), [], { pollMs: POLL_MS });
   const [expanded, setExpanded] = useState(false);
@@ -89,9 +91,11 @@ export default function GuardianHome() {
   const shown = expanded ? openList : openList.slice(0, limit);
   const hidden = openList.length - shown.length;
 
-  // 다음 할 일은 화면 아래에 고정한다 (확인할 일을 펼쳐도 보인다)
+  // 다음 할 일은 화면 아래에 고정한다 (확인할 일을 펼쳐도 보인다).
+  // 기본은 다음 복약. 약통 남은 칸 행은 보호자가 채우는 집(elder_refill_prompt false)에서 곧 채워야 할 때만 (R-071)
+  const showRefill = me.family.has_pillbox && !settings?.elder_refill_prompt && !!box?.refill_status.needs_refill;
   const nextRows =
-    next || me.family.has_pillbox ? (
+    next || showRefill ? (
       <View>
         {compact ? null : (
           <GText variant="label" color={C.sub} accessibilityRole="header">
@@ -107,26 +111,18 @@ export default function GuardianHome() {
               subtitle={`${dateKey(new Date(next.scheduled_at)) === dateKey(now) ? '오늘' : longDate(new Date(next.scheduled_at))} ${spokenTime(new Date(next.scheduled_at))}에 여쭤봐요`}
             />
           ) : null}
-          {me.family.has_pillbox ? (
+          {showRefill && box ? (
             <ListRow
               dense
               icon="pillbox"
-              iconTone={box?.refill_status.needs_refill || box?.pillbox_mismatch.detected ? 'warn' : 'info'}
-              title={box ? `약통 남은 칸 ${box.refill_status.remaining_cells}칸` : '약통 채우기'}
+              iconTone="warn"
+              title={`약통 남은 칸 ${box.refill_status.remaining_cells}칸`}
               subtitle={
-                box?.pillbox_mismatch.detected ? (
-                  <GText variant="sub" color={C.warn} style={{ fontWeight: '700' }}>
-                    ! 약통 상태가 기록과 달라요.
-                  </GText>
-                ) : box?.refill_status.needs_refill ? (
-                  <GText variant="sub" color={C.warn} style={{ fontWeight: '700' }}>
-                    ! 곧 채워야 해요.
-                  </GText>
-                ) : (
-                  '채운 뒤 사진을 찍어 기록해요'
-                )
+                <GText variant="sub" color={C.warn} style={{ fontWeight: '700' }}>
+                  {box.pillbox_mismatch.detected ? '! 곧 채워야 해요. 약통 상태가 기록과 달라요.' : '! 곧 채워야 해요.'}
+                </GText>
               }
-              accessibilityLabel={`${box ? `약통 남은 칸 ${box.refill_status.remaining_cells}칸` : '약통'}. 약통 채우기 화면 열기`}
+              accessibilityLabel={`약통 남은 칸 ${box.refill_status.remaining_cells}칸, 곧 채워야 해요. 약통 채우기 화면 열기`}
               onPress={() => router.push('/guardian/refill')}
             />
           ) : null}

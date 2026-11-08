@@ -20,7 +20,7 @@ const AUTO_HOME_MS = 5000;
  * 어떤 경우에도 "더 드세요", "드시지 마세요" 같은 지시는 하지 않는다 (원칙 6). 문구는 앱 템플릿이다
  */
 export default function Result() {
-  const { id, kind, name, mock, sim } = useLocalSearchParams<{ id: string; kind: Kind; name?: string; mock?: string; sim?: string }>();
+  const { id, kind, name, mock, sim, refill } = useLocalSearchParams<{ id: string; kind: Kind; name?: string; mock?: string; sim?: string; refill?: string }>();
   const { data: me } = useMe();
 
   const autoHome = kind === 'done' || kind === 'handoff';
@@ -51,6 +51,12 @@ export default function Result() {
             고마워요.{'\n'}
             {name ? `${name} ` : ''}약 기록해 뒀어요.
           </T>
+          {/* R-071: 문장 한 줄만 (버튼 없음) */}
+          {refill ? (
+            <T variant="elderBody" style={{ textAlign: 'center' }}>
+              약통을 채워 주세요.
+            </T>
+          ) : null}
         </Screen>
       );
     case 'retake':

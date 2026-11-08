@@ -135,6 +135,25 @@ export default function Settings() {
           <ListRow dense icon="clock" title="복약 시각 바꾸기" onPress={() => router.push('/guardian/schedule')} />
           <ListRow dense icon="pillbox" title="약통 다시 등록" onPress={() => router.push('/guardian/pillbox')} />
           <ListRow dense icon="camera" title="약통 채우기" onPress={() => router.push('/guardian/refill')} />
+          {/* R-071: 마지막 칸을 쓴 뒤 어르신 결과 화면에 "약통을 채워 주세요" 한 줄. 하루 약통 등록 때 켜진다 */}
+          <View style={styles.switchRow}>
+            <IconBubble name="pillbox" size={36} />
+            <View style={{ flex: 1 }}>
+              <GText variant="bodyStrong">약통 채우기 안내를 어르신께 보여 드리기</GText>
+              <GText variant="sub" color={C.sub}>
+                {cur.elder_refill_prompt
+                  ? '켜짐: 마지막 칸을 쓰면 어르신 화면에 "약통을 채워 주세요"가 나와요'
+                  : '꺼짐: 약통은 보호자가 채워요. 남은 칸이 적으면 홈에서 알려 드려요'}
+              </GText>
+            </View>
+            <Switch
+              accessibilityLabel="약통 채우기 안내를 어르신께 보여 드리기"
+              value={!!cur.elder_refill_prompt}
+              onValueChange={(v) => void put({ elder_refill_prompt: v })}
+              trackColor={{ true: C.primary, false: '#C5CEDA' }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
         </Group>
 
         <Group title="알림과 사진">

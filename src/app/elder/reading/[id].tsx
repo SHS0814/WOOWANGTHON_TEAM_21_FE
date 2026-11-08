@@ -53,6 +53,8 @@ export default function Reading() {
             name: doseName(res.dose_event),
             mock: res.is_mock ? '1' : '',
             sim: res.dose_event.is_simulated ? '1' : '',
+            // R-071: 마지막 칸을 쓴 정상 기록이면 E7a 에 "약통을 채워 주세요" 한 줄
+            refill: res.refill_prompt ? '1' : '',
           },
         });
       } catch (e) {

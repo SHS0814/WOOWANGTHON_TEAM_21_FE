@@ -304,6 +304,8 @@ export interface UploadResponse {
   result: UploadResultKind;
   dose_event: DoseEvent;
   is_mock: boolean;
+  /** R-071: 마지막 칸을 쓴 정상 기록이고 elder_refill_prompt 가 켜져 있으면 true. 이전 서버는 보내지 않을 수 있다 */
+  refill_prompt?: boolean;
 }
 
 /** 3.19 검색 쿼리 (R-051). filter 나 reason 이 있으면 기간 최대 366일, 없으면 31일 */
@@ -346,6 +348,8 @@ export interface Settings {
   summary_push_time: string;
   photo_retention_days: number;
   unchanged_mode: UnchangedMode;
+  /** R-071: 마지막 칸을 쓴 뒤 어르신 화면에 "약통을 채워 주세요"를 보여 줄지. 기본 false. 이전 서버는 보내지 않을 수 있다 */
+  elder_refill_prompt?: boolean;
 }
 
 /** 3.28 QA용 모의 판독 시나리오. 다음 복약 사진 1장에만 적용된다 */
