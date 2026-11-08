@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Alert, Platform, Switch, View } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { api, guardianMessage, type Device, type NotificationStatus, type UnchangedMode } from '@/api';
-import { Section, ErrorText, GButton, GField, GScreen, GText, ListGroup, ListRow, Notice, RadioRow, SectionTitle, StatusChip } from '@/components/guardian/ui';
+import { api, guardianMessage, type Device, type NotificationStatus, type Settings, type UnchangedMode } from '@/api';
+import { ErrorText, GButton, GField, GScreen, GText, IconBubble, ListGroup, ListRow, Notice, RadioRow, TONE } from '@/components/guardian/ui';
 import { useRole } from '@/lib/role';
 import { onPushStatus, pushStatus, type PushStatus } from '@/notify/guardianPush';
 import { spokenTime } from '@/lib/time';
@@ -24,30 +25,52 @@ const PUSH_TEXT: Record<PushStatus, { tone: GuardianTone; text: string }> = {
   failed: { tone: 'warn', text: '알림 등록에 실패했어요. 앱을 다시 열면 다시 시도해요. 처리할 일은 홈에서 보여요.' },
 };
 
-/** G8 설정 (api.md 3.7·3.8·3.26). 호칭, 시각, 약통 재등록, 칸 그대로 처리(R-009), 요약 알림·사진 보관(R-006), 기기 연결 */
+const UNCHANGED_OPTIONS: { key: UnchangedMode; title: string; short: string; detail: string }[] = [
+  {
+    key: 'remind_then_retake',
+    title: '앱에서 한 번 안내하고 다시 찍기 (기본)',
+    short: '안내 후 다시 찍기',
+    detail: '"약 드실 시간이에요"라고 한 번 말씀드리고 사진을 다시 받아요. 그래도 그대로면 알려드려요.',
+  },
+  { key: 'handoff_immediately', title: '바로 나에게 알리기', short: '바로 알리기', detail: '안내 없이 바로 알려드려요.' },
+];
+
+type SheetKind = 'name' | 'unchanged' | 'retention' | null;
+
+/**
+ * G8 설정 (api.md 3.7·3.8·3.26). 호칭, 시각, 약통 재등록, 칸 그대로 처리(R-009), 요약 알림·사진 보관(R-006), 기기 연결.
+ * 412×883 에서 스크롤을 줄이려고 모든 항목을 한 줄 행으로 두고, 값을 바꾸는 것은 아래에서 올라오는 시트에서 한다 (R-064)
+ */
 export default function Settings() {
   const { data: me } = useMe();
   const { data: settings } = useApiData(() => api.settings());
   const { data: devices, reload: reloadDevices } = useApiData(() => api.devices());
   const { setRole } = useRole();
-  const [elder, setElder] = useState('');
-  const [saved, setSaved] = useState(false);
+  const [sheet, setSheet] = useState<SheetKind>(null);
+  // 저장 직후 다시 읽기 전에도 바뀐 값을 보여 준다
+  const [local, setLocal] = useState<Partial<Settings>>({});
   const [msg, setMsg] = useState('');
   const [push, setPush] = useState<PushStatus>(pushStatus());
   useEffect(() => onPushStatus(() => setPush(pushStatus())), []);
-
-  useEffect(() => {
-    if (settings) setElder(settings.elder_display_name);
-  }, [settings]);
+  useEffect(() => setLocal({}), [settings]);
 
   if (!settings || !me) return null;
+  const cur = { ...settings, ...local };
 
-  const put = async (patch: Parameters<typeof api.putSettings>[0]) => {
+  const put = async (patch: Partial<Settings>) => {
     setMsg('');
+    setLocal((l) => ({ ...l, ...patch }));
     try {
       await api.putSettings(patch);
+      return true;
     } catch (e) {
+      setLocal((l) => {
+        const next = { ...l };
+        for (const k of Object.keys(patch) as (keyof Settings)[]) delete next[k];
+        return next;
+      });
       setMsg(guardianMessage(e));
+      return false;
     }
   };
 
@@ -73,115 +96,222 @@ export default function Settings() {
   };
 
   const pushInfo = PUSH_TEXT[push];
+  const pushLabel = push === 'registered' ? '받는 중' : push === 'unknown' ? '준비 중' : '받을 수 없음';
+  const unchanged = UNCHANGED_OPTIONS.find((o) => o.key === cur.unchanged_mode) ?? UNCHANGED_OPTIONS[0];
 
   return (
-    <GScreen inTabs title="설정">
-      <SectionTitle>호칭</SectionTitle>
-      <Section>
-        <GField label="어르신 호칭" value={elder} onChangeText={(t) => (setElder(t), setSaved(false))} />
-        <GButton
-          variant="secondary"
-          icon={saved ? 'check' : undefined}
-          iconColor={C.ok}
-          label={saved ? '저장했어요' : '호칭 저장'}
-          accessibilityLabel={saved ? '저장했어요' : '호칭 저장'}
-          disabled={!elder.trim()}
-          onPress={async () => {
-            await put({ elder_display_name: elder.trim() });
-            setSaved(true);
-          }}
-        />
-        {/* 보호자 자신의 이름은 이 API로 바꾸지 않는다 (3.26) */}
-        <GText variant="sub" color={C.sub}>
-          어르신 화면에 보이는 내 이름: {me.device.display_name}
-        </GText>
-      </Section>
+    <GScreen inTabs dense>
+      <GText variant="title" accessibilityRole="header">
+        설정
+      </GText>
 
-      <SectionTitle>약통과 시각</SectionTitle>
-      <ListGroup>
-        <ListRow icon="clock" title="복약 시각 바꾸기" onPress={() => router.push('/guardian/schedule')} />
-        <ListRow icon="pillbox" title="약통 다시 등록" onPress={() => router.push('/guardian/pillbox')} />
-        <ListRow icon="camera" title="약통 채우기" onPress={() => router.push('/guardian/refill')} />
-      </ListGroup>
-
-      <SectionTitle>약 칸이 그대로일 때</SectionTitle>
-      <ListGroup>
-        <RadioRow
-          selected={settings.unchanged_mode === 'remind_then_retake'}
-          title="앱에서 한 번 안내하고 다시 찍기 (기본)"
-          detail={'"약 드실 시간이에요"라고 한 번 말씀드리고 사진을 다시 받아요. 그래도 그대로면 알려드려요.'}
-          onPress={() => put({ unchanged_mode: 'remind_then_retake' satisfies UnchangedMode })}
+      <Group title="가족">
+        <ListRow
+          dense
+          icon="user"
+          title="어르신 호칭"
+          subtitle={`어르신 화면에 보이는 내 이름: ${me.device.display_name}`}
+          right={<Value>{cur.elder_display_name}</Value>}
+          accessibilityLabel={`어르신 호칭 ${cur.elder_display_name}. 바꾸기`}
+          onPress={() => setSheet('name')}
         />
-        <RadioRow
-          selected={settings.unchanged_mode === 'handoff_immediately'}
-          title="바로 나에게 알리기"
-          detail="안내 없이 바로 알려드려요."
-          onPress={() => put({ unchanged_mode: 'handoff_immediately' })}
-        />
-      </ListGroup>
+      </Group>
 
-      <SectionTitle>알림</SectionTitle>
-      <ListGroup>
-        <ListRow icon="bell" iconTone={pushInfo.tone} title="확인이 필요할 때 알림" subtitle={pushInfo.text}>
-          <View style={{ marginTop: 4 }}>
-            <StatusChip tone={pushInfo.tone} label={push === 'registered' ? '받는 중' : push === 'unknown' ? '준비 중' : '받을 수 없음'} />
-          </View>
-        </ListRow>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8, marginHorizontal: -8, paddingVertical: 14, minHeight: 64 }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <GText variant="bodyStrong">하루 요약을 {settings.summary_push_time}에 알림으로 받기</GText>
+      <Group title="약통과 시각">
+        <ListRow dense icon="clock" title="복약 시각 바꾸기" onPress={() => router.push('/guardian/schedule')} />
+        <ListRow dense icon="pillbox" title="약통 다시 등록" onPress={() => router.push('/guardian/pillbox')} />
+        <ListRow dense icon="camera" title="약통 채우기" onPress={() => router.push('/guardian/refill')} />
+      </Group>
+
+      <Group title="알림과 사진">
+        <ListRow
+          dense
+          icon="pillbox"
+          title="약 칸이 그대로일 때"
+          right={<Value>{unchanged.short}</Value>}
+          accessibilityLabel={`약 칸이 그대로일 때: ${unchanged.title}. 바꾸기`}
+          onPress={() => setSheet('unchanged')}
+        />
+        <ListRow
+          dense
+          icon="bell"
+          iconTone={pushInfo.tone}
+          title="확인이 필요할 때 알림"
+          accessibilityLabel={`확인이 필요할 때 알림: ${pushLabel}. ${push === 'registered' ? '' : pushInfo.text}`}
+          subtitle={
             <GText variant="sub" color={C.sub}>
-              {settings.summary_push_enabled ? '켜짐' : '꺼짐: 요약은 앱 안에서만 보여요'}
+              <Text style={{ color: TONE[pushInfo.tone].fg, fontWeight: '700' }}>{pushLabel}</Text>
+              {push === 'registered' ? '' : ` · ${pushInfo.text}`}
+            </GText>
+          }
+        />
+        <View style={styles.switchRow}>
+          <IconBubble name="calendar" size={36} />
+          <View style={{ flex: 1 }}>
+            <GText variant="bodyStrong">하루 요약 알림 {cur.summary_push_time}</GText>
+            <GText variant="sub" color={C.sub}>
+              {cur.summary_push_enabled ? '켜짐' : '꺼짐: 요약은 앱 안에서만 보여요'}
             </GText>
           </View>
           <Switch
-            accessibilityLabel="하루 요약 알림"
-            value={settings.summary_push_enabled}
+            accessibilityLabel={`하루 요약을 ${cur.summary_push_time}에 알림으로 받기`}
+            value={cur.summary_push_enabled}
             onValueChange={(v) => void put({ summary_push_enabled: v })}
             trackColor={{ true: C.primary, false: '#C5CEDA' }}
             thumbColor="#FFFFFF"
           />
         </View>
-      </ListGroup>
+        <ListRow
+          dense
+          icon="image"
+          title="사진 보관 기간"
+          right={<Value>{`${cur.photo_retention_days}일`}</Value>}
+          accessibilityLabel={`사진 보관 기간 ${cur.photo_retention_days}일. 바꾸기`}
+          onPress={() => setSheet('retention')}
+        />
+      </Group>
 
-      <SectionTitle>사진 보관 기간</SectionTitle>
-      <ListGroup>
-        {RETENTION_OPTIONS.map((d) => (
-          <RadioRow
-            key={d}
-            selected={settings.photo_retention_days === d}
-            title={`${d}일${d === 90 ? ' (기본)' : ''}`}
-            onPress={() => put({ photo_retention_days: d })}
-          />
-        ))}
-      </ListGroup>
-
-      <SectionTitle>연결된 폰</SectionTitle>
-      <ListGroup>
+      <Group title="연결된 폰">
         {(devices ?? []).map((d) => (
           <ListRow
             key={d.id}
+            dense
             icon={d.role === 'elder' ? 'smartphone' : 'user'}
             iconTone={d.role === 'elder' ? 'info' : 'neutral'}
             title={`${d.role === 'elder' ? '어르신 폰' : '보호자 폰'} · ${d.display_name}${d.is_me ? ' (이 폰)' : ''}`}
+            right={<GButton compact variant="danger" label="해제" accessibilityLabel={`${d.display_name} 연결 해제`} onPress={() => confirmUnpair(d)} />}
           >
             {d.role === 'elder' ? <ElderNotificationStatus status={d.notification_status} /> : null}
-            <View style={{ alignSelf: 'flex-start', marginTop: 6 }}>
-              <GButton
-                compact
-                variant="danger"
-                icon="x"
-                label="연결 해제"
-                accessibilityLabel={`${d.display_name} 연결 해제`}
-                onPress={() => confirmUnpair(d)}
-              />
-            </View>
           </ListRow>
         ))}
-        {!devices?.some((d) => d.role === 'elder') ? <ListRow icon="link" title="어르신 폰 연결" onPress={() => router.push('/guardian/connect')} /> : null}
-      </ListGroup>
+        {!devices?.some((d) => d.role === 'elder') ? (
+          <ListRow dense icon="link" title="어르신 폰 연결" onPress={() => router.push('/guardian/connect')} />
+        ) : null}
+      </Group>
       {msg ? <ErrorText>{msg}</ErrorText> : null}
+
+      <NameSheet
+        visible={sheet === 'name'}
+        value={cur.elder_display_name}
+        onCancel={() => setSheet(null)}
+        onSave={async (name) => {
+          if (await put({ elder_display_name: name })) setSheet(null);
+        }}
+      />
+      <ChoiceSheet
+        visible={sheet === 'unchanged'}
+        title="약 칸이 그대로일 때"
+        onClose={() => setSheet(null)}
+        options={UNCHANGED_OPTIONS.map((o) => ({ key: o.key, title: o.title, detail: o.detail }))}
+        value={cur.unchanged_mode}
+        onPick={(k) => (setSheet(null), void put({ unchanged_mode: k as UnchangedMode }))}
+      />
+      <ChoiceSheet
+        visible={sheet === 'retention'}
+        title="사진 보관 기간"
+        onClose={() => setSheet(null)}
+        options={RETENTION_OPTIONS.map((d) => ({ key: `${d}`, title: `${d}일${d === 90 ? ' (기본)' : ''}` }))}
+        value={`${cur.photo_retention_days}`}
+        onPick={(k) => (setSheet(null), void put({ photo_retention_days: Number(k) }))}
+      />
     </GScreen>
+  );
+}
+
+/** 작은 섹션 제목 + 구분선 목록 */
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View>
+      <GText variant="label" color={C.sub} accessibilityRole="header">
+        {title}
+      </GText>
+      <ListGroup style={{ marginTop: 0 }}>{children}</ListGroup>
+    </View>
+  );
+}
+
+/** 행 오른쪽의 현재 값 */
+function Value({ children }: { children: ReactNode }) {
+  return (
+    <GText variant="body" color={C.primaryStrong} style={{ fontWeight: '700', maxWidth: 170, textAlign: 'right' }} numberOfLines={2}>
+      {children}
+    </GText>
+  );
+}
+
+/** 아래에서 올라오는 시트. 키보드가 뜨면 시트가 키보드 위로 올라간다 */
+function Sheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: ReactNode }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Pressable style={styles.scrim} accessibilityRole="button" accessibilityLabel="닫기" onPress={onClose} />
+        <View style={[styles.sheet, { paddingBottom: 16 + insets.bottom }]}>
+          <GText variant="section" accessibilityRole="header">
+            {title}
+          </GText>
+          {children}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+function NameSheet({ visible, value, onCancel, onSave }: { visible: boolean; value: string; onCancel: () => void; onSave: (name: string) => Promise<void> }) {
+  const [name, setName] = useState(value);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (visible) setName(value);
+  }, [visible, value]);
+  return (
+    <Sheet visible={visible} title="어르신 호칭" onClose={onCancel}>
+      <GField label="어르신을 뭐라고 부르세요?" value={name} onChangeText={setName} placeholder="예: 어머니" hint="어르신 화면의 말은 이 호칭으로 나와요." />
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          <GButton variant="secondary" label="취소" onPress={onCancel} />
+        </View>
+        <View style={{ flex: 2 }}>
+          <GButton
+            icon="check"
+            label="호칭 저장"
+            busy={busy}
+            disabled={!name.trim() || name.trim() === value}
+            onPress={async () => {
+              setBusy(true);
+              await onSave(name.trim());
+              setBusy(false);
+            }}
+          />
+        </View>
+      </View>
+    </Sheet>
+  );
+}
+
+function ChoiceSheet({
+  visible,
+  title,
+  options,
+  value,
+  onPick,
+  onClose,
+}: {
+  visible: boolean;
+  title: string;
+  options: { key: string; title: string; detail?: string }[];
+  value: string;
+  onPick: (key: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet visible={visible} title={title} onClose={onClose}>
+      <ListGroup style={{ marginTop: 0 }}>
+        {options.map((o) => (
+          <RadioRow key={o.key} selected={o.key === value} title={o.title} detail={o.detail} onPress={() => onPick(o.key)} />
+        ))}
+      </ListGroup>
+      <GButton variant="secondary" label="닫기" onPress={onClose} />
+    </Sheet>
   );
 }
 
@@ -207,3 +337,16 @@ function ElderNotificationStatus({ status }: { status: NotificationStatus | null
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, minHeight: 52 },
+  scrim: { flex: 1, backgroundColor: 'rgba(11,31,51,0.45)' },
+  sheet: {
+    backgroundColor: C.card,
+    paddingHorizontal: guardian.space.gutter,
+    paddingTop: 20,
+    gap: 14,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+});
