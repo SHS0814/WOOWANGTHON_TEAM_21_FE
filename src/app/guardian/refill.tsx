@@ -4,7 +4,7 @@ import { ActivityIndicator, View } from 'react-native';
 
 import { api, guardianMessage, isApiError, type Refill as RefillT } from '@/api';
 import { BaselineReviewScreen } from '@/components/guardian/BaselineReview';
-import { Card, GButton, GScreen, GText, IconBubble, ListGroup, ListRow, MockTag, Notice } from '@/components/guardian/ui';
+import { Section, GButton, GScreen, GText, IconBubble, ListGroup, ListRow, MockTag, Notice } from '@/components/guardian/ui';
 import { PillboxCamera } from '@/components/PillboxCamera';
 import { pillboxAspect } from '@/lib/pillboxAspect';
 import { longDate, spokenHHMM, TIME_OF_DAY_LABELS, WEEKDAY_LABELS } from '@/lib/time';
@@ -106,7 +106,7 @@ export default function Refill() {
     <GScreen footer={<GButton label="약통 채웠어요 + 사진 찍기" icon="camera" onPress={() => setStep('shoot')} />}>
       <Stack.Screen options={{ headerShown: true }} />
       {api.mode === 'mock' ? <MockTag label="남은 칸은 모의 계산이에요." /> : null}
-      <Card>
+      <Section>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
           <View style={{ flex: 1 }} accessible accessibilityLabel={`남은 칸 ${st.remaining_cells}칸`}>
             <GText variant="label" color={C.sub}>
@@ -134,7 +134,7 @@ export default function Refill() {
         )}
         {st.needs_refill ? <Notice tone="warn" title="곧 채워야 해요" /> : null}
         {box.pillbox_mismatch.detected ? <Notice tone="warn" title="약통 상태가 기록과 달라요" /> : null}
-      </Card>
+      </Section>
       {msg ? (
         <Notice tone={msg.startsWith('✓') ? 'ok' : 'danger'} title={msg.startsWith('✓') ? msg.slice(2) : undefined}>
           {msg.startsWith('✓') ? undefined : msg}

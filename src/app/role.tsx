@@ -22,8 +22,8 @@ export default function RoleSelect() {
       <View style={styles.top}>
         <Brand tagline="약 드실 시간에 앱이 대신 여쭤보고, 확인이 필요할 때만 보호자에게 알려드려요." />
       </View>
-      <View style={{ gap: 12 }}>
-        <View style={{ gap: 4, marginBottom: 4 }}>
+      <View>
+        <View style={{ gap: 4, marginBottom: 8 }}>
           <GText variant="title">이 폰을 누가 쓰나요?</GText>
           <GText color={C.sub}>처음 한 번만 골라요. 보통은 보호자가 대신 골라 드려요.</GText>
         </View>
@@ -31,7 +31,6 @@ export default function RoleSelect() {
           icon="user"
           title="어르신 폰으로 쓰기"
           detail="약 드실 시간에 질문을 받고 약통 사진을 찍어요."
-          primary
           onPress={async () => {
             await setRole('elder');
             router.replace('/elder');
@@ -51,31 +50,26 @@ export default function RoleSelect() {
   );
 }
 
-function RoleCard({ icon, title, detail, primary, onPress }: { icon: IconName; title: string; detail: string; primary?: boolean; onPress: () => void }) {
+/** 고르는 줄. 상자 대신 위아래 구분선으로 나눈다 (T-FE15) */
+function RoleCard({ icon, title, detail, onPress }: { icon: IconName; title: string; detail: string; onPress: () => void }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={title}
       accessibilityHint={detail}
       onPress={onPress}
-      style={({ pressed }) => [styles.card, primary && styles.cardPrimary, pressed && { opacity: 0.85 }]}
+      style={({ pressed }) => [styles.row, pressed && { backgroundColor: C.neutralSoft }]}
     >
-      {primary ? (
-        <View style={styles.bubbleOnPrimary}>
-          <Icon name={icon} size={28} color={C.onPrimary} />
-        </View>
-      ) : (
-        <IconBubble name={icon} tone="info" size={52} />
-      )}
+      <IconBubble name={icon} tone="info" size={52} />
       <View style={{ flex: 1, gap: 2 }}>
-        <GText variant="section" color={primary ? C.onPrimary : C.text} style={{ fontSize: 21, lineHeight: 28 }}>
+        <GText variant="section" style={{ fontSize: 21, lineHeight: 28 }}>
           {title}
         </GText>
-        <GText variant="sub" color={primary ? C.onPrimary : C.sub}>
+        <GText variant="sub" color={C.sub}>
           {detail}
         </GText>
       </View>
-      <Icon name="chevronRight" size={24} color={primary ? C.onPrimary : C.muted} />
+      <Icon name="chevronRight" size={24} color={C.primary} />
     </Pressable>
   );
 }
@@ -83,17 +77,15 @@ function RoleCard({ icon, title, detail, primary, onPress }: { icon: IconName; t
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg, paddingHorizontal: guardian.space.gutter, paddingTop: 24, justifyContent: 'space-between', gap: 24 },
   top: { flex: 1, justifyContent: 'center' },
-  card: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
     minHeight: 96,
-    padding: 18,
-    borderRadius: guardian.radius.card,
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
+    paddingVertical: 18,
+    paddingHorizontal: 8,
+    marginHorizontal: -8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: C.line,
   },
-  cardPrimary: { backgroundColor: C.primary, borderColor: C.primary },
-  bubbleOnPrimary: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
 });

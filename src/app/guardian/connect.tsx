@@ -6,7 +6,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { api, CREATE_DEMO_FAMILY, guardianMessage, isApiError, type PairingCode } from '@/api';
 import { MOCK_INVITE_CODE } from '@/api/mock';
 import { BrandMark } from '@/components/guardian/Brand';
-import { Card, ErrorText, GButton, GField, GScreen, GText, MockTag, Notice, StatusChip } from '@/components/guardian/ui';
+import { Section, ErrorText, ListGroup, GButton, GField, GScreen, GText, MockTag, Notice, StatusChip } from '@/components/guardian/ui';
 import { isElderShortCode, normalizeInviteCode } from '@/lib/pairCode';
 import { spokenTime } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
@@ -74,12 +74,12 @@ export default function Connect() {
       <GScreen footer={<GButton label="연결 끝났어요" icon="check" onPress={() => router.replace('/guardian')} />}>
         <Steps current={2} />
         <GText variant="title">어르신 폰에 앱을 설치하고, 이 QR을 어르신 폰으로 찍어주세요</GText>
-        <Card style={{ alignItems: 'center' }}>
+        <Section style={{ alignItems: 'center' }}>
           <View style={styles.qr} accessible accessibilityLabel="연결용 QR">
             <QRCode value={code.qr_payload} size={220} />
           </View>
           {code.short_code ? (
-            <View style={{ alignItems: 'center', gap: 4, alignSelf: 'stretch', borderTopWidth: 1, borderColor: C.divider, paddingTop: 12 }}>
+            <View style={{ alignItems: 'center', gap: 4, alignSelf: 'stretch', borderTopWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingTop: 12 }}>
               <GText variant="sub" color={C.sub}>
                 QR이 안 되면 이 숫자를 넣어주세요
               </GText>
@@ -89,7 +89,7 @@ export default function Connect() {
             </View>
           ) : null}
           <StatusChip tone="neutral" icon="clock" label={`${spokenTime(until)}까지, 한 번만 쓸 수 있어요.`} />
-        </Card>
+        </Section>
         <GButton variant="ghost" icon="refresh" label="새 코드 받기" onPress={issue} />
         <Notice tone="info" icon="shield">
           연결되면 어르신 폰에 동의 화면이 나와요.
@@ -121,16 +121,16 @@ export default function Connect() {
         <GText color={C.sub}>보호자 폰에서 가족을 만들고, 어르신 폰으로 QR을 찍으면 연결돼요.</GText>
       </View>
       <Steps current={1} />
-      <Card>
+      <Section>
         <GField label="어르신을 뭐라고 부르세요?" value={elder} onChangeText={setElder} placeholder="예: 어머니" />
         <GField label="어르신 화면에 보일 내 이름" value={me} onChangeText={setMe} placeholder="예: 민수" />
         <GText variant="sub" color={C.sub}>
           어르신 화면의 말은 이 호칭으로 나와요. 어르신 호칭은 나중에 설정에서 바꿀 수 있어요.
         </GText>
-      </Card>
+      </Section>
       {CREATE_DEMO_FAMILY ? <MockTag label="시연용 가족으로 만들어요 (is_demo)" /> : null}
       {error ? <ErrorText>{error}</ErrorText> : null}
-      <Card padded={false}>
+      <ListGroup>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="초대 코드가 있어요"
@@ -148,7 +148,7 @@ export default function Connect() {
             합류 ›
           </GText>
         </Pressable>
-      </Card>
+      </ListGroup>
     </GScreen>
   );
 }
@@ -224,10 +224,10 @@ function JoinFamily({ onBack, onTokenCleared }: { onBack: () => void; onTokenCle
         <GText variant="title">초대 코드로 가족에 합류해요</GText>
         <GText color={C.sub}>처음 보호자에게 받은 보호자 초대 코드를 넣어 주세요.</GText>
       </View>
-      <Card>
+      <Section>
         <GField label="초대 코드" value={input} onChangeText={setInput} placeholder="받은 코드나 링크를 붙여넣기" verbatim />
         <GField label="어르신 화면에 보일 내 이름" value={name} onChangeText={setName} placeholder="예: 민지" />
-      </Card>
+      </Section>
       {error ? <ErrorText>{error}</ErrorText> : null}
       {api.mode === 'mock' ? (
         <Pressable accessibilityRole="button" onPress={() => setInput(MOCK_INVITE_CODE)} style={styles.mockBtn}>
@@ -248,7 +248,7 @@ function joinMessage(e: unknown): string {
 const styles = StyleSheet.create({
   qr: { padding: 12, backgroundColor: '#FFF', borderRadius: 12 },
   short: { fontSize: 44, letterSpacing: 8, textAlign: 'center', lineHeight: 54, fontWeight: '800', color: C.text, fontVariant: ['tabular-nums'] },
-  joinRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, minHeight: 64 },
+  joinRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 8, marginHorizontal: -8, minHeight: 64 },
   mockBtn: { minHeight: 48, justifyContent: 'center' },
   steps: { flexDirection: 'row', gap: 8 },
   step: { flex: 1, alignItems: 'center', gap: 6 },

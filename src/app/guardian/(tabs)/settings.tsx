@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Platform, Switch, View } from 'react-native';
 
 import { api, guardianMessage, type Device, type NotificationStatus, type UnchangedMode } from '@/api';
-import { Card, ErrorText, GButton, GField, GScreen, GText, ListGroup, ListRow, Notice, RadioRow, SectionTitle, StatusChip } from '@/components/guardian/ui';
+import { Section, ErrorText, GButton, GField, GScreen, GText, ListGroup, ListRow, Notice, RadioRow, SectionTitle, StatusChip } from '@/components/guardian/ui';
 import { useRole } from '@/lib/role';
 import { onPushStatus, pushStatus, type PushStatus } from '@/notify/guardianPush';
 import { spokenTime } from '@/lib/time';
@@ -77,7 +77,7 @@ export default function Settings() {
   return (
     <GScreen inTabs title="설정">
       <SectionTitle>호칭</SectionTitle>
-      <Card>
+      <Section>
         <GField label="어르신 호칭" value={elder} onChangeText={(t) => (setElder(t), setSaved(false))} />
         <GButton
           variant="secondary"
@@ -95,7 +95,7 @@ export default function Settings() {
         <GText variant="sub" color={C.sub}>
           어르신 화면에 보이는 내 이름: {me.device.display_name}
         </GText>
-      </Card>
+      </Section>
 
       <SectionTitle>약통과 시각</SectionTitle>
       <ListGroup>
@@ -127,7 +127,7 @@ export default function Settings() {
             <StatusChip tone={pushInfo.tone} label={push === 'registered' ? '받는 중' : push === 'unknown' ? '준비 중' : '받을 수 없음'} />
           </View>
         </ListRow>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, minHeight: 64 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8, marginHorizontal: -8, paddingVertical: 14, minHeight: 64 }}>
           <View style={{ flex: 1, gap: 2 }}>
             <GText variant="bodyStrong">하루 요약을 {settings.summary_push_time}에 알림으로 받기</GText>
             <GText variant="sub" color={C.sub}>

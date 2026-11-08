@@ -5,7 +5,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { api, guardianMessage, type DetectResponse, type Layout, type Refill } from '@/api';
 import { BaselineReviewScreen } from '@/components/guardian/BaselineReview';
 import { PillboxGrid } from '@/components/guardian/PillboxGrid';
-import { Card, ErrorText, GButton, GJudgeBadge, GScreen, GText, IconBubble, Notice } from '@/components/guardian/ui';
+import { Section, ErrorText, GButton, GJudgeBadge, GScreen, GText, IconBubble, Notice } from '@/components/guardian/ui';
 import { PillboxCamera } from '@/components/PillboxCamera';
 import { pillboxAspect } from '@/lib/pillboxAspect';
 import { guardian } from '@/theme';
@@ -123,7 +123,7 @@ export default function PillboxRegister() {
   return (
     <GScreen footer={<GButton label="이대로 등록" icon="check" onPress={save} />}>
       <Stack.Screen options={{ headerShown: true }} />
-      <Card>
+      <Section>
         <GJudgeBadge kind="ai" isMock={detected.is_mock} />
         <View>
           <GText variant="label" color={C.sub}>
@@ -141,8 +141,8 @@ export default function PillboxRegister() {
           <GText color={C.sub}>맞는지 확인해 주세요.</GText>
         )}
         <PillboxGrid layout={layout} />
-      </Card>
-      <Card>
+      </Section>
+      <Section>
         <GText variant="section">줄 수 고치기</GText>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
@@ -165,7 +165,7 @@ export default function PillboxRegister() {
           </View>
         </View>
         <GButton variant="ghost" icon="camera" label="다시 찍기" onPress={() => setStep('shoot')} />
-      </Card>
+      </Section>
       {error ? <ErrorText>{error}</ErrorText> : null}
     </GScreen>
   );

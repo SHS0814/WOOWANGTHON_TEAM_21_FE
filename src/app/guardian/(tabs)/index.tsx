@@ -1,8 +1,8 @@
 import { Redirect, router } from 'expo-router';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { api } from '@/api';
-import { Card, GButton, GScreen, GText, IconBubble, ListGroup, ListRow, MockTag, Notice, SectionTitle, StatusChip } from '@/components/guardian/ui';
+import { Section, GButton, GScreen, GText, IconBubble, ListGroup, ListRow, MockTag, Notice, SectionTitle, StatusChip } from '@/components/guardian/ui';
 import { SimulationTag } from '@/components/MockBanner';
 import { doseStatus, takenCount } from '@/lib/doseStatus';
 import { reasonTitle } from '@/lib/handoff';
@@ -75,7 +75,7 @@ export default function GuardianHome() {
 
       {/* 오늘 요약 */}
       {summary && c ? (
-        <Card>
+        <Section>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
             <View style={{ flex: 1 }}>
               <GText variant="label" color={C.sub}>
@@ -96,7 +96,7 @@ export default function GuardianHome() {
             {summary.all_normal ? (
               <StatusChip tone="ok" label="모두 정상" />
             ) : c.open_handoffs ? (
-              <StatusChip tone="danger" label={`확인할 일 ${c.open_handoffs}건`} />
+              <StatusChip tone="danger" label={`오늘 확인할 일 ${c.open_handoffs}건`} />
             ) : c.pending ? (
               <StatusChip tone="neutral" label={`${c.pending}번 남음`} />
             ) : null}
@@ -118,7 +118,7 @@ export default function GuardianHome() {
             </View>
           ) : null}
           {items.length ? (
-            <View style={{ borderTopWidth: 1, borderColor: C.divider, paddingTop: 4 }}>
+            <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingTop: 4 }}>
               {items.map((ev) => {
                 const st = doseStatus(ev);
                 return (
@@ -136,34 +136,36 @@ export default function GuardianHome() {
               })}
             </View>
           ) : null}
-        </Card>
+        </Section>
       ) : null}
 
       {/* 확인할 일 */}
       {open && open.length > 0 ? (
         <>
           <SectionTitle right={<StatusChip tone="danger" label={`${open.length}건`} />}>확인할 일</SectionTitle>
-          {open.map((h) => (
-            <Card key={h.id} tone="danger" padded={false}>
-              {h.dose_event.is_simulated ? (
-                <View style={{ padding: 12, paddingBottom: 0 }}>
-                  <SimulationTag />
-                </View>
-              ) : null}
+          <ListGroup>
+            {open.map((h) => (
               <ListRow
+                key={h.id}
                 icon="alert"
                 iconTone="danger"
                 title={reasonTitle(h.reason)}
+                titleColor={C.danger}
                 subtitle={`${doseName(h.dose_event)} 약 · ${spokenTime(new Date(h.notified_at))} 알림`}
                 accessibilityLabel={`${doseName(h.dose_event)} 약, ${reasonTitle(h.reason)}. 자세히 보기`}
                 onPress={() => router.push({ pathname: '/guardian/handoff/[id]', params: { id: h.id } })}
               >
+                {h.dose_event.is_simulated ? (
+                  <View style={{ marginTop: 4 }}>
+                    <SimulationTag />
+                  </View>
+                ) : null}
                 <GText variant="label" color={C.primaryStrong} style={{ marginTop: 2 }}>
                   자세히 보기
                 </GText>
               </ListRow>
-            </Card>
-          ))}
+            ))}
+          </ListGroup>
         </>
       ) : null}
 
@@ -232,7 +234,7 @@ function SetupCard({
   onPress: () => void;
 }) {
   return (
-    <Card tone="info">
+    <Section>
       <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
         <IconBubble name={icon} tone="info" size={48} />
         <View style={{ flex: 1 }}>
@@ -244,6 +246,6 @@ function SetupCard({
       </View>
       <GText color={C.sub}>{detail}</GText>
       <GButton label={label} onPress={onPress} />
-    </Card>
+    </Section>
   );
 }

@@ -3,7 +3,7 @@ import { View } from 'react-native';
 
 import { api, guardianMessage, type Layout, type Refill } from '@/api';
 import { PillboxGrid } from '@/components/guardian/PillboxGrid';
-import { Card, ErrorText, GButton, GJudgeBadge, GScreen, GText, IconBubble } from '@/components/guardian/ui';
+import { Section, ErrorText, GButton, GJudgeBadge, GScreen, GText, IconBubble } from '@/components/guardian/ui';
 import { guardian } from '@/theme';
 
 /**
@@ -53,7 +53,7 @@ function BaselineReview({ refill, layout, state }: { refill: Refill; layout: Lay
 
   return (
     <>
-      <Card>
+      <Section>
         <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
           <IconBubble name="help" tone="warn" />
           <View style={{ flex: 1 }}>
@@ -63,9 +63,9 @@ function BaselineReview({ refill, layout, state }: { refill: Refill; layout: Lay
         <GText>약통을 보고 칸마다 알려주세요.</GText>
         <GJudgeBadge kind="ai" isMock={refill.baseline_reading.is_mock} />
         <PillboxGrid layout={layout} cells={refill.baseline_reading.cells} />
-      </Card>
+      </Section>
       {flagged.map((c) => (
-        <Card key={c.cell_id}>
+        <Section key={c.cell_id}>
           <GText variant="section">{name(c.cell_id)} 칸</GText>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             {(['full', 'empty'] as const).map((st) => {
@@ -85,7 +85,7 @@ function BaselineReview({ refill, layout, state }: { refill: Refill; layout: Lay
               );
             })}
           </View>
-        </Card>
+        </Section>
       ))}
       {error ? <ErrorText>{error}</ErrorText> : null}
     </>

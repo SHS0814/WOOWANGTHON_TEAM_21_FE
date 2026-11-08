@@ -37,9 +37,11 @@ export const GUTTER = 24;
  */
 export const guardian = {
   color: {
-    bg: '#F2F4F7',
+    /** 보호자 화면은 흰 바탕 한 면. 카드 대신 구분선(line)으로 나눈다 (T-FE15) */
+    bg: '#FFFFFF',
     card: '#FFFFFF',
     border: '#E1E6ED',
+    line: '#DCE1E8',
     divider: '#EDF0F4',
     text: '#14202E',
     sub: '#4B5767',
