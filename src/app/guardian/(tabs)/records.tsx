@@ -183,22 +183,25 @@ function RecordList({
       {error ? <ErrorText>기록을 불러오지 못했어요.</ErrorText> : null}
       {events && filtered && !items.length ? <GText color={C.sub}>찾는 기록이 없어요.</GText> : null}
 
+      {/* 날짜 머리글 없이 행마다 날짜를 쓴다 (R-060). 같은 날 행은 구분선 없이 이어 붙이고, 날짜가 바뀌는 곳에만 선을 긋는다 */}
       <View>
-        {groups.map((g) => (
-          <View key={g.key}>
-            {/* 얇은 날짜 띠. 기록 없는 날은 띠 한 줄로 끝난다 */}
-            <View style={styles.dayHead}>
-              <GText variant="label" color={g.key === today ? C.primaryStrong : C.sub}>
-                {dateLabelOfKey(g.key)}
-                {g.key === today ? ' · 오늘' : ''}
-                {g.items.length ? '' : events ? ' · 기록 없음' : ' · 불러오는 중'}
+        {groups.map((g) =>
+          g.items.length ? (
+            g.items.map((ev, i) => <EventRow key={ev.id} ev={ev} search={search} today={today} first={i === 0} last={i === g.items.length - 1} />)
+          ) : (
+            <View
+              key={g.key}
+              style={[styles.emptyRow, styles.rowLine]}
+              accessible
+              accessibilityLabel={`${dateLabelOfKey(g.key)}, ${events ? '기록 없음' : '불러오는 중'}`}
+            >
+              <DatePrefix dateKey={g.key} today={today} first />
+              <GText variant="sub" color={C.sub}>
+                {events ? '기록 없음' : '불러오는 중'}
               </GText>
             </View>
-            {g.items.map((ev, i) => (
-              <EventRow key={ev.id} ev={ev} search={search} last={i === g.items.length - 1} />
-            ))}
-          </View>
-        ))}
+          ),
+        )}
       </View>
 
       {hasOlder || hasNewer ? (
@@ -341,7 +344,21 @@ function DateRow({ label, value, onPress }: { label: string; value: string; onPr
  * 복약 건 한 줄. 특이사항 검색 결과에는 리필 확인 요청(refill_unconfirmed)만 있는 건이 handoff 없이 들어올 수 있다 (R-052).
  * 그런 건은 검색한 사유로, 사유를 고르지 않았으면 "약통 확인 요청"으로 표시한다
  */
-function EventRow({ ev, search, last }: { ev: DoseEvent; search: Search | null; last: boolean }) {
+/**
+ * 행 앞의 날짜 "11/8 (일)" (+ 오늘). 같은 날 두 번째 행부터는 보통 굵기의 흐린 색으로 둔다:
+ * 생략하지 않아 행 하나만 봐도 날짜를 알 수 있고, 흐리게 해서 날이 바뀌는 첫 행이 눈에 먼저 띈다 (R-060)
+ */
+function DatePrefix({ dateKey: key, today, first }: { dateKey: string; today: string; first: boolean }) {
+  const isToday = key === today;
+  return (
+    <Text style={[styles.date, first ? styles.dateFirst : styles.dateRepeat]}>
+      {shortDateOfKey(key)}
+      {isToday ? <Text style={first ? styles.todayFirst : styles.dateRepeat}> 오늘</Text> : null}
+    </Text>
+  );
+}
+
+function EventRow({ ev, search, today, first, last }: { ev: DoseEvent; search: Search | null; today: string; first: boolean; last: boolean }) {
   const st = doseStatus(ev);
   const fg = TONE[st.tone].fg;
   const extra = search?.reason
@@ -386,7 +403,7 @@ function EventRow({ ev, search, last }: { ev: DoseEvent; search: Search | null; 
     );
 
   const a11y = [
-    `${dateLabelOfKey(ev.date)} ${doseName(ev)} ${spokenTime(new Date(ev.scheduled_at))}`,
+    `${dateLabelOfKey(ev.date)}${ev.date === today ? ' 오늘' : ''} ${doseName(ev)} ${spokenTime(new Date(ev.scheduled_at))}`,
     st.label,
     recorded,
     judge,
@@ -400,30 +417,31 @@ function EventRow({ ev, search, last }: { ev: DoseEvent; search: Search | null; 
   const body = (
     <>
       <View style={{ flex: 1, gap: 1 }}>
-        <View style={styles.line1}>
-          <GText variant="bodyStrong" style={{ flex: 1 }} numberOfLines={1}>
-            {TIME_OF_DAY_LABELS[ev.slot.time_of_day]} · {spokenTime(new Date(ev.scheduled_at))}
-          </GText>
-          <Icon name={st.icon} size={18} color={fg} strokeWidth={2.4} />
-          <GText variant="bodyStrong" color={fg}>
-            {st.label}
-          </GText>
-        </View>
-        {parts.length ? (
-          <GText variant="sub" color={C.sub}>
+        {/* 1줄: 날짜 + 시간대·예정 시각. 2줄: 상태(기호 + 글자, 상태 색) · 기록 시각 · 판정 · 인계 사유 · 모의/시뮬레이션 */}
+        <GText variant="bodyStrong">
+          <DatePrefix dateKey={ev.date} today={today} first={first} />
+          {'  '}
+          {TIME_OF_DAY_LABELS[ev.slot.time_of_day]} · {spokenTime(new Date(ev.scheduled_at))}
+        </GText>
+        <View style={styles.line2}>
+          <View style={{ paddingTop: 3 }}>
+            <Icon name={st.icon} size={17} color={fg} strokeWidth={2.4} />
+          </View>
+          <GText variant="sub" color={C.sub} style={{ flex: 1 }}>
+            <Text style={{ color: fg, fontWeight: '700' }}>{st.label}</Text>
             {parts.map((p, i) => (
               <Fragment key={i}>
-                {i ? ' · ' : ''}
+                {' · '}
                 {p}
               </Fragment>
             ))}
           </GText>
-        ) : null}
+        </View>
       </View>
       {ev.handoff ? <Icon name="chevronRight" size={20} color={C.muted} /> : null}
     </>
   );
-  const style = [styles.row, !last && styles.rowLine];
+  const style = [styles.row, !first && { paddingTop: 2 }, !last && { paddingBottom: 4 }, last && styles.rowLine];
   if (!ev.handoff)
     return (
       <View style={style} accessible accessibilityLabel={a11y}>
@@ -462,11 +480,15 @@ const styles = StyleSheet.create({
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 12, borderLeftWidth: 3, borderColor: C.primary },
   pageHead: { flexDirection: 'row', alignItems: 'center', gap: 4, marginHorizontal: -10 },
   iconBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  dayHead: { backgroundColor: C.neutralSoft, marginHorizontal: -guardian.space.gutter, paddingHorizontal: guardian.space.gutter, paddingVertical: 3 },
+  emptyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, paddingVertical: 8 },
+  date: { fontSize: 17, lineHeight: 25 },
+  dateFirst: { fontWeight: '800', color: C.text },
+  dateRepeat: { fontWeight: '400', color: C.muted },
+  todayFirst: { fontWeight: '800', color: C.primaryStrong },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, minHeight: 48, paddingHorizontal: 8, marginHorizontal: -8 },
   rowLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.line },
   mockText: { color: C.mock, fontWeight: '800' },
-  line1: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  line2: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 },
   pager: { flexDirection: 'row', gap: 10, marginTop: 4 },
   dateRow: {
     flexDirection: 'row',
