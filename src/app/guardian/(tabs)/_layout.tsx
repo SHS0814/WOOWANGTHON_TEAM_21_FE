@@ -11,7 +11,7 @@ const tabIcon =
   (name: IconName) =>
   ({ color, focused }: { color: ColorValue; focused: boolean }) => <Icon name={name} size={24} color={color} strokeWidth={focused ? 2.4 : 2} />;
 
-/** 보호자 하단 탭: 홈(G4) · 기록(G6) · 설정(G8). 탭 이름은 아이콘과 글자를 함께 쓴다 */
+/** 보호자 하단 탭: 홈(G4) · 기록(G6) · 통계(G6 통계, R-056) · 설정(G8). 탭 이름은 아이콘과 글자를 함께 쓴다 */
 export default function GuardianTabs() {
   const insets = useSafeAreaInsets();
   return (
@@ -34,6 +34,7 @@ export default function GuardianTabs() {
     >
       <Tabs.Screen name="index" options={{ title: '홈', tabBarAccessibilityLabel: '홈, 오늘 상태', tabBarIcon: tabIcon('home') }} />
       <Tabs.Screen name="records" options={{ title: '기록', tabBarAccessibilityLabel: '기록', tabBarIcon: tabIcon('records') }} />
+      <Tabs.Screen name="stats" options={{ title: '통계', tabBarAccessibilityLabel: '통계', tabBarIcon: tabIcon('chart') }} />
       <Tabs.Screen name="settings" options={{ title: '설정', tabBarAccessibilityLabel: '설정', tabBarIcon: tabIcon('settings') }} />
     </Tabs>
   );
