@@ -11,6 +11,7 @@ import { guardian } from '@/theme';
 export type IconName =
   | 'home'
   | 'records'
+  | 'chart'
   | 'settings'
   | 'pill'
   | 'pillbox'
@@ -212,6 +213,14 @@ const SHAPES: Record<IconName, React.ReactNode> = {
     </>
   ),
   dot: <Circle cx={12} cy={12} r={4} />,
+  chart: (
+    <>
+      {P('M4 20h16')}
+      <Rect x={5.5} y={12} width={3} height={6} rx={0.8} />
+      <Rect x={10.5} y={7} width={3} height={11} rx={0.8} />
+      <Rect x={15.5} y={10} width={3} height={8} rx={0.8} />
+    </>
+  ),
 };
 
 export function Icon({

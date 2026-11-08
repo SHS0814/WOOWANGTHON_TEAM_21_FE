@@ -1,27 +1,13 @@
-import { router } from 'expo-router';
-import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, View, type ScrollViewInstance } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
 
-import { api, type DoseEvent, type DoseEventFilter, type HandoffReason, type Summary } from '@/api';
+import { api, type DoseEvent, type DoseEventFilter, type HandoffReason } from '@/api';
 import { DatePickerSheet } from '@/components/guardian/DatePicker';
-import { dayLevel, hasException, Heatmap } from '@/components/guardian/Heatmap';
-import { Icon } from '@/components/guardian/Icon';
-import {
-  ChoiceChips,
-  ErrorText,
-  GButton,
-  GJudgeBadge,
-  GScreen,
-  GText,
-  ListGroup,
-  ListRow,
-  MockTag,
-  Section,
-  SectionTitle,
-  StatusChip,
-} from '@/components/guardian/ui';
+import { Icon, type IconName } from '@/components/guardian/Icon';
+import { ChoiceChips, ErrorText, GButton, GScreen, GText, ListGroup, MockTag, Section, TONE } from '@/components/guardian/ui';
 import { doseName } from '@/lib/doseLabel';
-import { doseStatus, takenCount } from '@/lib/doseStatus';
+import { doseStatus } from '@/lib/doseStatus';
 import { REASON_TITLE, reasonTitle } from '@/lib/handoff';
 import { addDaysKey, dateKey, dateLabelOfKey, daysBetweenKeys, shortDateOfKey, spokenTime, TIME_OF_DAY_LABELS } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
@@ -35,8 +21,6 @@ const PAGE_ITEMS = 15;
 /** 검색 기간 최대 (3.19: filter·reason 이 있으면 366일) */
 const MAX_SEARCH_DAYS = 366;
 
-type Tab = 'list' | 'stats';
-type StatPeriod = 'week' | 'month' | 'year' | 'total';
 type FilterKey = 'all' | DoseEventFilter | 'reason';
 
 interface Search {
@@ -56,53 +40,38 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 const REASONS = Object.keys(REASON_TITLE) as HandoffReason[];
 
 /**
- * G6 기록 (R-051, api.md 3.19·3.25). 전체 기록을 최신순으로, 7일씩 넘겨 본다 (맨 위가 오늘).
- * 날짜·기간·특이사항으로 검색하고, 통계는 1주·1달·1년·전체 중 골라 숫자와 잔디맵으로 본다.
- * 문장은 앱이 만들고 서버는 숫자만 준다
+ * G6 기록 (R-051, R-056, api.md 3.19). 전체 기록을 최신순으로, 7일씩 넘겨 본다 (맨 위가 오늘).
+ * 날짜·기간·특이사항으로 검색한다. 통계는 별도 탭(stats.tsx)이다
  */
 export default function Records() {
   const today = dateKey(new Date());
-  const [tab, setTab] = useState<Tab>('list');
   const [search, setSearch] = useState<Search | null>(null);
   const [page, setPage] = useState(0);
   const scroll = useRef<ScrollViewInstance>(null);
-
-  const showDay = (key: string) => {
-    setSearch({ from: key, to: key });
+  // 통계 탭 잔디맵에서 날짜를 누르면 ?date=YYYY-MM-DD&at=누른 시각 으로 온다 → 그날 날짜 검색을 연다
+  const { date, at } = useLocalSearchParams<{ date?: string; at?: string }>();
+  useEffect(() => {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    setSearch({ from: date, to: date });
     setPage(0);
-    setTab('list');
     scroll.current?.scrollTo({ y: 0, animated: false });
-  };
+  }, [date, at]);
 
   return (
-    <GScreen inTabs title="기록" scrollRef={scroll}>
-      <ChoiceChips
-        label="보기"
-        value={tab}
-        onChange={setTab}
-        options={[
-          { key: 'list', label: '기록' },
-          { key: 'stats', label: '통계' },
-        ]}
+    <GScreen inTabs dense scrollRef={scroll}>
+      <RecordList
+        today={today}
+        search={search}
+        page={page}
+        setPage={(p) => {
+          setPage(p);
+          scroll.current?.scrollTo({ y: 0, animated: false });
+        }}
+        onSearch={(q) => {
+          setSearch(q);
+          setPage(0);
+        }}
       />
-      {api.mode === 'mock' ? <MockTag label="지난 날 기록은 모의 데이터예요." /> : null}
-      {tab === 'list' ? (
-        <RecordList
-          today={today}
-          search={search}
-          page={page}
-          setPage={(p) => {
-            setPage(p);
-            scroll.current?.scrollTo({ y: 0, animated: false });
-          }}
-          onSearch={(q) => {
-            setSearch(q);
-            setPage(0);
-          }}
-        />
-      ) : (
-        <Stats today={today} onPick={showDay} />
-      )}
     </GScreen>
   );
 }
@@ -159,8 +128,27 @@ function RecordList({
     for (let k = winTo; k >= winFrom; k = addDaysKey(k, -1)) groups.push({ key: k, items: items.filter((e) => e.date === k) });
   }
 
+  const rangeLabel = filtered
+    ? `${items.length}건${pageCount && pageCount > 1 ? ` · ${page + 1}/${pageCount}쪽` : ''}`
+    : winFrom === winTo
+      ? dateLabelOfKey(winTo)
+      : `${shortDateOfKey(winFrom)} ~ ${shortDateOfKey(winTo)}`;
+  const older = filtered ? '이전 쪽 (더 오래된 기록)' : '이전 7일 (더 오래된 기록)';
+  const newer = filtered ? '다음 쪽 (더 최근 기록)' : '다음 7일 (더 최근 기록)';
+
   return (
     <>
+      {/* 머리줄: 제목 + 찾기 */}
+      <View style={styles.titleRow}>
+        <GText variant="display" accessibilityRole="header" style={{ flex: 1 }}>
+          기록
+        </GText>
+        {open ? null : (
+          <GButton compact variant="secondary" icon="calendar" label="찾기" accessibilityLabel="날짜·기간·특이사항으로 찾기" onPress={() => setOpen(true)} />
+        )}
+      </View>
+      {api.mode === 'mock' ? <MockTag label="지난 날 기록은 모의 데이터예요." /> : null}
+
       {open ? (
         <SearchPanel
           today={today}
@@ -173,62 +161,51 @@ function RecordList({
         />
       ) : search ? (
         <View style={styles.searchBar}>
-          <View style={{ flex: 1 }}>
-            <GText variant="label" color={C.sub}>
-              검색 결과
-            </GText>
-            <GText variant="bodyStrong">{searchLabel(search)}</GText>
-          </View>
-          <View style={{ gap: 6 }}>
-            <GButton compact variant="secondary" icon="calendar" label="바꾸기" accessibilityLabel="검색 바꾸기" onPress={() => setOpen(true)} />
-            <GButton compact variant="ghost" icon="x" label="지우기" accessibilityLabel="검색 지우기" onPress={() => onSearch(null)} />
-          </View>
-        </View>
-      ) : (
-        <GButton variant="secondary" icon="calendar" label="날짜·기간·특이사항으로 찾기" onPress={() => setOpen(true)} />
-      )}
-
-      {!filtered && winFrom === winTo ? null : (
-        <View style={styles.pageHead} accessibilityLiveRegion="polite">
-          <GText variant="section" accessibilityRole="header">
-            {filtered
-              ? `${items.length}건${pageCount && pageCount > 1 ? ` · ${page + 1}/${pageCount}쪽` : ''}`
-              : winFrom === winTo
-                ? dateLabelOfKey(winTo)
-                : `${shortDateOfKey(winFrom)} ~ ${shortDateOfKey(winTo)}`}
+          <Icon name="calendar" size={20} color={C.primaryStrong} />
+          <GText variant="bodyStrong" style={{ flex: 1 }} accessibilityLabel={`검색: ${searchLabel(search)}`}>
+            {searchLabel(search)}
           </GText>
+          <IconButton icon="x" label="검색 지우기" onPress={() => onSearch(null)} />
+        </View>
+      ) : null}
+
+      {/* 범위 + 넘기기 (위에도 두어 맨 아래까지 내려가지 않아도 된다) */}
+      {!filtered && winFrom === winTo ? null : (
+        <View style={styles.pageHead}>
+          <IconButton icon="chevronLeft" label={older} disabled={!hasOlder} onPress={() => setPage(page + 1)} />
+          <GText variant="bodyStrong" accessibilityRole="header" accessibilityLiveRegion="polite" style={{ flex: 1, textAlign: 'center' }}>
+            {rangeLabel}
+          </GText>
+          <IconButton icon="chevronRight" label={newer} disabled={!hasNewer} onPress={() => setPage(page - 1)} />
         </View>
       )}
 
       {error ? <ErrorText>기록을 불러오지 못했어요.</ErrorText> : null}
       {events && filtered && !items.length ? <GText color={C.sub}>찾는 기록이 없어요.</GText> : null}
 
-      {groups.map((g) => (
-        <View key={g.key}>
-          <View style={styles.dayHead}>
-            <GText variant="label" color={g.key === today ? C.primaryStrong : C.sub}>
-              {dateLabelOfKey(g.key)}
-              {g.key === today ? ' · 오늘' : ''}
-            </GText>
+      <View>
+        {groups.map((g) => (
+          <View key={g.key}>
+            {/* 얇은 날짜 띠. 기록 없는 날은 띠 한 줄로 끝난다 */}
+            <View style={styles.dayHead}>
+              <GText variant="label" color={g.key === today ? C.primaryStrong : C.sub}>
+                {dateLabelOfKey(g.key)}
+                {g.key === today ? ' · 오늘' : ''}
+                {g.items.length ? '' : events ? ' · 기록 없음' : ' · 불러오는 중'}
+              </GText>
+            </View>
+            {g.items.map((ev, i) => (
+              <EventRow key={ev.id} ev={ev} search={search} last={i === g.items.length - 1} />
+            ))}
           </View>
-          {g.items.length ? (
-            <ListGroup style={{ marginTop: 0 }}>
-              {g.items.map((ev) => (
-                <EventRow key={ev.id} ev={ev} search={search} />
-              ))}
-            </ListGroup>
-          ) : (
-            <GText variant="sub" color={C.sub} style={styles.empty}>
-              {events ? '기록 없음' : '불러오는 중'}
-            </GText>
-          )}
-        </View>
-      ))}
+        ))}
+      </View>
 
       {hasOlder || hasNewer ? (
         <View style={styles.pager}>
           <View style={{ flex: 1 }}>
             <GButton
+              compact
               variant="secondary"
               icon="chevronLeft"
               label={filtered ? '이전 쪽' : '이전 7일'}
@@ -239,6 +216,7 @@ function RecordList({
           </View>
           <View style={{ flex: 1 }}>
             <GButton
+              compact
               variant="secondary"
               icon="chevronRight"
               label={filtered ? '다음 쪽' : '다음 7일'}
@@ -363,8 +341,9 @@ function DateRow({ label, value, onPress }: { label: string; value: string; onPr
  * 복약 건 한 줄. 특이사항 검색 결과에는 리필 확인 요청(refill_unconfirmed)만 있는 건이 handoff 없이 들어올 수 있다 (R-052).
  * 그런 건은 검색한 사유로, 사유를 고르지 않았으면 "약통 확인 요청"으로 표시한다
  */
-function EventRow({ ev, search }: { ev: DoseEvent; search: Search | null }) {
+function EventRow({ ev, search, last }: { ev: DoseEvent; search: Search | null; last: boolean }) {
   const st = doseStatus(ev);
+  const fg = TONE[st.tone].fg;
   const extra = search?.reason
     ? ev.handoff?.reason === search.reason
       ? null
@@ -373,178 +352,121 @@ function EventRow({ ev, search }: { ev: DoseEvent; search: Search | null }) {
       ? '약통 확인 요청'
       : null;
   const handoffNote = ev.handoff && ev.outcome_source === 'guardian' ? reasonTitle(ev.handoff.reason) : null;
-  return (
-    <ListRow
-      icon="pill"
-      iconTone={st.tone === 'neutral' ? 'neutral' : st.tone}
-      title={`${TIME_OF_DAY_LABELS[ev.slot.time_of_day]} · ${spokenTime(new Date(ev.scheduled_at))}`}
-      subtitle={ev.taken_at && ev.outcome === 'taken' ? `${spokenTime(new Date(ev.taken_at))} 기록` : undefined}
-      accessibilityLabel={`${dateLabelOfKey(ev.date)} ${doseName(ev)}, ${st.label}${handoffNote ? `, ${handoffNote}` : ''}${extra ? `, ${extra}` : ''}${ev.handoff ? '. 인계 자세히 보기' : ''}`}
-      onPress={
-        ev.handoff
-          ? () =>
-              router.push({
-                pathname: '/guardian/handoff/[id]',
-                params: { id: ev.handoff!.id },
-              })
-          : undefined
-      }
-    >
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-        <StatusChip tone={st.tone} label={st.label} icon={st.icon} />
-        {handoffNote ? <StatusChip tone="warn" icon="alert" label={handoffNote} /> : null}
-        {extra ? <StatusChip tone="warn" icon="pillbox" label={extra} /> : null}
-        {ev.is_simulated ? <MockTag label="시뮬레이션" /> : null}
-        {ev.outcome_source === 'guardian' ? (
-          <GJudgeBadge kind="guardian" guardianName={ev.decided_by?.display_name} />
-        ) : ev.latest_reading ? (
-          <GJudgeBadge kind="ai" isMock={ev.latest_reading.is_mock} />
+  const judge = ev.outcome_source === 'guardian' ? `${ev.decided_by?.display_name ?? '보호자'} 판정` : ev.latest_reading ? 'AI 판독' : null;
+  const mock = ev.outcome_source !== 'guardian' && ev.latest_reading?.is_mock;
+  const recorded = ev.taken_at && ev.outcome === 'taken' ? `${spokenTime(new Date(ev.taken_at))} 기록` : null;
+
+  // 둘째 줄: 기록 시각 · 판정 · 인계 사유 · 모의·시뮬레이션 (보라 굵은 글자로 눈에 띄게)
+  const parts: ReactNode[] = [];
+  if (recorded) parts.push(recorded);
+  if (judge) parts.push(judge);
+  if (handoffNote)
+    parts.push(
+      <Text key="h" style={{ color: C.warn, fontWeight: '700' }}>
+        ⚠ {handoffNote}
+      </Text>,
+    );
+  if (extra)
+    parts.push(
+      <Text key="e" style={{ color: C.warn, fontWeight: '700' }}>
+        ⚠ {extra}
+      </Text>,
+    );
+  if (mock)
+    parts.push(
+      <Text key="m" style={styles.mockText}>
+        모의 결과
+      </Text>,
+    );
+  if (ev.is_simulated)
+    parts.push(
+      <Text key="s" style={styles.mockText}>
+        시뮬레이션
+      </Text>,
+    );
+
+  const a11y = [
+    `${dateLabelOfKey(ev.date)} ${doseName(ev)} ${spokenTime(new Date(ev.scheduled_at))}`,
+    st.label,
+    recorded,
+    judge,
+    handoffNote,
+    extra,
+    mock ? '모의 결과, 실제 AI 아님' : null,
+    ev.is_simulated ? '시뮬레이션' : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+  const body = (
+    <>
+      <View style={{ flex: 1, gap: 1 }}>
+        <View style={styles.line1}>
+          <GText variant="bodyStrong" style={{ flex: 1 }} numberOfLines={1}>
+            {TIME_OF_DAY_LABELS[ev.slot.time_of_day]} · {spokenTime(new Date(ev.scheduled_at))}
+          </GText>
+          <Icon name={st.icon} size={18} color={fg} strokeWidth={2.4} />
+          <GText variant="bodyStrong" color={fg}>
+            {st.label}
+          </GText>
+        </View>
+        {parts.length ? (
+          <GText variant="sub" color={C.sub}>
+            {parts.map((p, i) => (
+              <Fragment key={i}>
+                {i ? ' · ' : ''}
+                {p}
+              </Fragment>
+            ))}
+          </GText>
         ) : null}
       </View>
-    </ListRow>
-  );
-}
-
-// ── 통계 ──────────────────────────────────────────────
-
-const PERIODS: { key: StatPeriod; label: string }[] = [
-  { key: 'week', label: '1주' },
-  { key: 'month', label: '1달' },
-  { key: 'year', label: '1년' },
-  { key: 'total', label: '전체' },
-];
-
-function Stats({ today, onPick }: { today: string; onPick: (key: string) => void }) {
-  const [period, setPeriod] = useState<StatPeriod>('month');
-  // 1주·1달은 그 기간만, 1년·전체는 하루 요약 366일을 한 번에 받는다 (3.25). 전체 합계는 period=total
-  const days = period === 'week' ? 7 : period === 'month' ? 30 : 366;
-  const from = addDaysKey(today, -(days - 1));
-  const { data: daily, error } = useApiData(() => api.summaries('day', from, today), [from, today]);
-  const { data: total } = useApiData(() => (period === 'total' ? api.summaries('total') : Promise.resolve(null)), [period]);
-
-  const sum = period === 'total' ? (total?.[0] ?? null) : daily ? sumDays(daily) : null;
-  // 1년·전체 잔디맵은 기록이 시작된 날부터 그린다 (비어 있는 앞쪽을 줄인다)
-  const firstDay = daily?.find((d) => d.counts.scheduled > 0)?.period_start;
-  const mapFrom = period === 'week' || period === 'month' ? from : firstDay && firstDay > from ? firstDay : from;
-  const c = sum?.counts;
-  const handoffs = sum ? Object.values(sum.handoffs_by_reason).reduce((a, b) => a + b, 0) : 0;
-  const exceptionDays = daily?.filter((d) => d.period_start >= mapFrom && hasException(d)).length ?? 0;
-  const fullDays = daily?.filter((d) => d.period_start >= mapFrom && dayLevel(d) === 3).length ?? 0;
-
-  return (
-    <>
-      <ChoiceChips label="통계 기간" value={period} onChange={setPeriod} options={PERIODS} />
-      {error ? <ErrorText>통계를 불러오지 못했어요.</ErrorText> : null}
-      {sum && c ? (
-        <Section>
-          <GText variant="label" color={C.sub}>
-            {period === 'total'
-              ? `전체 (${sum.period_start.slice(0, 4)}년 ${shortDateOfKey(sum.period_start)}부터)`
-              : period === 'year'
-                ? '최근 1년'
-                : `${shortDateOfKey(from)} ~ 오늘`}
-          </GText>
-          <View
-            style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}
-            accessible
-            accessibilityLabel={`${c.scheduled}번 중 ${takenCount(sum)}번 기록${c.scheduled ? `, ${Math.round((takenCount(sum) / c.scheduled) * 100)}퍼센트` : ''}`}
-          >
-            <GText variant="stat">{takenCount(sum)}</GText>
-            <GText variant="section" color={C.sub}>
-              / {c.scheduled}번 기록
-              {c.scheduled ? ` (${Math.round((takenCount(sum) / c.scheduled) * 100)}%)` : ''}
-            </GText>
-          </View>
-          <View style={styles.statRow}>
-            <StatItem label="AI 확인" value={`${c.taken_ai}번`} />
-            <StatItem label="보호자 판정 드심" value={`${c.taken_guardian}번`} />
-            <StatItem label="안 드심" value={`${c.not_taken}번`} tone={c.not_taken ? C.danger : undefined} />
-            <StatItem label="인계" value={`${handoffs}건`} tone={handoffs ? C.warn : undefined} />
-          </View>
-          {handoffs ? (
-            <GText variant="sub" color={C.sub}>
-              {REASONS.filter((r) => sum.handoffs_by_reason[r])
-                .map((r) => `${REASON_TITLE[r]} ${sum.handoffs_by_reason[r]}`)
-                .join(' · ')}
-            </GText>
-          ) : null}
-          {sum.includes_mock || sum.includes_simulated ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {sum.includes_mock ? <MockTag label="모의 결과 포함" /> : null}
-              {sum.includes_simulated ? <MockTag label="시뮬레이션 포함" /> : null}
-            </View>
-          ) : null}
-        </Section>
-      ) : null}
-      {daily ? (
-        <View style={{ gap: 8 }}>
-          <SectionTitle>날마다 복용</SectionTitle>
-          <GText variant="sub" color={C.sub}>
-            다 드신 날 {fullDays}일 · 특이사항 있던 날 {exceptionDays}일. 칸을 누르면 그날 기록으로 가요.
-          </GText>
-          <Heatmap days={daily} from={mapFrom} to={today} big={period === 'week' || period === 'month'} onPick={onPick} />
-          {period === 'total' && total?.[0] && daysBetweenKeys(total[0].period_start, today) >= 366 ? (
-            <GText variant="sub" color={C.sub}>
-              잔디맵은 최근 1년만 보여요. 위 숫자는 전체 기간이에요.
-            </GText>
-          ) : null}
-        </View>
-      ) : null}
+      {ev.handoff ? <Icon name="chevronRight" size={20} color={C.muted} /> : null}
     </>
   );
-}
-
-function StatItem({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  const style = [styles.row, !last && styles.rowLine];
+  if (!ev.handoff)
+    return (
+      <View style={style} accessible accessibilityLabel={a11y}>
+        {body}
+      </View>
+    );
   return (
-    <View style={styles.statItem}>
-      <GText variant="bodyStrong" color={tone}>
-        {value}
-      </GText>
-      <GText variant="sub" color={C.sub}>
-        {label}
-      </GText>
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${a11y}. 인계 자세히 보기`}
+      onPress={() => router.push({ pathname: '/guardian/handoff/[id]', params: { id: ev.handoff!.id } })}
+      style={({ pressed }) => [...style, pressed && { backgroundColor: C.neutralSoft }]}
+    >
+      {body}
+    </Pressable>
   );
 }
 
-function sumDays(days: Summary[]): Summary {
-  const sum = (k: keyof Summary['counts']) => days.reduce((n, d) => n + d.counts[k], 0);
-  const reasons = { ...days[0]?.handoffs_by_reason };
-  for (const r of REASONS) reasons[r] = days.reduce((n, d) => n + (d.handoffs_by_reason[r] ?? 0), 0);
-  return {
-    ...days[days.length - 1],
-    period_start: days[0]?.period_start ?? '',
-    counts: {
-      scheduled: sum('scheduled'),
-      taken_ai: sum('taken_ai'),
-      taken_guardian: sum('taken_guardian'),
-      not_taken: sum('not_taken'),
-      acknowledged: sum('acknowledged'),
-      open_handoffs: sum('open_handoffs'),
-      pending: sum('pending'),
-    },
-    handoffs_by_reason: reasons,
-    includes_mock: days.some((d) => d.includes_mock),
-    includes_simulated: days.some((d) => d.includes_simulated),
-  };
+function IconButton({ icon, label, onPress, disabled }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.iconBtn, pressed && { backgroundColor: C.neutralSoft }]}
+    >
+      <Icon name={icon} size={24} color={disabled ? '#B8C1CC' : C.primaryStrong} strokeWidth={2.4} />
+    </Pressable>
+  );
 }
 
 const styles = StyleSheet.create({
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: C.line,
-  },
-  pageHead: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  dayHead: { paddingTop: 4, paddingBottom: 2 },
-  empty: {
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: C.line,
-  },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 12, borderLeftWidth: 3, borderColor: C.primary },
+  pageHead: { flexDirection: 'row', alignItems: 'center', gap: 4, marginHorizontal: -10 },
+  iconBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  dayHead: { backgroundColor: C.neutralSoft, marginHorizontal: -guardian.space.gutter, paddingHorizontal: guardian.space.gutter, paddingVertical: 3 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, minHeight: 48, paddingHorizontal: 8, marginHorizontal: -8 },
+  rowLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.line },
+  mockText: { color: C.mock, fontWeight: '800' },
+  line1: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pager: { flexDirection: 'row', gap: 10, marginTop: 4 },
   dateRow: {
     flexDirection: 'row',
@@ -554,6 +476,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     marginHorizontal: -8,
   },
-  statRow: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 10 },
-  statItem: { width: '50%', gap: 0 },
 });
