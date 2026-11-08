@@ -43,7 +43,7 @@ export function Heatmap({ days, from, to, big, onPick }: { days: Summary[]; from
   for (let k = start; k <= to; k = addDaysKey(k, 7)) weeks.push(Array.from({ length: 7 }, (_, i) => addDaysKey(k, i)));
 
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 8 }}>
       {big ? (
         <BigGrid weeks={weeks} from={from} to={to} byKey={byKey} onPick={onPick} />
       ) : (
@@ -58,7 +58,7 @@ type GridProps = { weeks: string[][]; from: string; to: string; byKey: Map<strin
 
 function BigGrid({ weeks, from, to, byKey, onPick }: GridProps) {
   return (
-    <View style={{ gap: 4 }}>
+    <View style={{ gap: 3 }}>
       <View style={s.row}>
         {WEEKDAY_LABELS.map((w) => (
           <Text key={w} style={s.weekday}>
@@ -159,13 +159,13 @@ function Legend({ big }: { big: boolean }) {
     <View style={s.legend} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <View style={s.legendItem}>
         <GText variant="sub" color={C.sub}>
-          적게
+          0%
         </GText>
         {LEVELS.map((c) => (
           <View key={c} style={[s.legendCell, { backgroundColor: c, borderColor: c }]} />
         ))}
         <GText variant="sub" color={C.sub}>
-          다 드심
+          100%
         </GText>
       </View>
       <View style={s.legendItem}>
@@ -185,7 +185,7 @@ function Legend({ big }: { big: boolean }) {
           </View>
         )}
         <GText variant="sub" color={C.sub}>
-          특이사항 있는 날 (인계·안 드심)
+          특이사항
         </GText>
       </View>
     </View>
@@ -193,7 +193,7 @@ function Legend({ big }: { big: boolean }) {
 }
 
 const s = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 4 },
+  row: { flexDirection: 'row', gap: 3 },
   weekday: { flex: 1, textAlign: 'center', fontSize: 16, lineHeight: 22, color: C.sub },
   bigCell: { flex: 1, height: 44, borderRadius: 8, borderWidth: 1.5, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   bigDay: { fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
@@ -216,7 +216,7 @@ const s = StyleSheet.create({
   month: { position: 'absolute', left: 0, width: 44, fontSize: 14, lineHeight: 20, color: C.sub },
   smallCell: { width: SMALL, height: SMALL, borderRadius: 3, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.danger, borderWidth: 1, borderColor: '#FFFFFF' },
-  legend: { gap: 6 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 14, rowGap: 4 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendCell: { width: 16, height: 16, borderRadius: 3, borderWidth: 1 },
 });
