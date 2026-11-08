@@ -6,12 +6,12 @@ import { api, type DoseEvent, type DoseEventFilter, type HandoffReason } from '@
 import { DatePickerSheet } from '@/components/guardian/DatePicker';
 import { Icon, type IconName } from '@/components/guardian/Icon';
 import { ChoiceChips, ErrorText, GButton, GScreen, GText, ListGroup, MockTag, Section, TONE } from '@/components/guardian/ui';
-import { doseName } from '@/lib/doseLabel';
 import { doseStatus } from '@/lib/doseStatus';
 import { REASON_TITLE, reasonTitle } from '@/lib/handoff';
 import { addDaysKey, dateKey, dateLabelOfKey, daysBetweenKeys, shortDateOfKey, spokenTime, TIME_OF_DAY_LABELS } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
-import { guardian } from '@/theme';
+import { seoulClock } from '@/lib/seoulTime';
+import { guardian, type GuardianTone } from '@/theme';
 
 const C = guardian.color;
 
@@ -358,84 +358,110 @@ function DatePrefix({ dateKey: key, today, first }: { dateKey: string; today: st
   );
 }
 
-function EventRow({ ev, search, today, first, last }: { ev: DoseEvent; search: Search | null; today: string; first: boolean; last: boolean }) {
+/** 둘째 줄에 쓰는 인계 사유 짧은 이름 (R-069). 화면 낭독에는 긴 이름(REASON_TITLE)을 쓴다 */
+const REASON_SHORT: Record<HandoffReason, string> = {
+  no_response: '무응답',
+  unclear: '애매',
+  unchanged: '칸 그대로',
+  double_suspected: '이중 의심',
+  refill_unconfirmed: '약통 확인',
+  refill_overdue: '확인 불가',
+};
+const reasonShort = (r: string) => REASON_SHORT[r as HandoffReason] ?? '확인 필요';
+
+/** 첫째 줄 오른쪽 상태 (기호 + 짧은 글자). 열린 인계는 사유 대신 "확인 필요", 사유는 둘째 줄에 짧게 */
+function shortStatus(ev: DoseEvent): { tone: GuardianTone; label: string; icon: IconName } {
   const st = doseStatus(ev);
+  if (ev.handoff && !ev.outcome) return { tone: 'danger', label: '확인 필요', icon: 'alert' };
+  if (ev.outcome === 'acknowledged') return { ...st, label: '확인함' };
+  return st;
+}
+
+/** "HH:MM" (서울) */
+const hhmm = (iso: string) => {
+  const { h, min } = seoulClock(new Date(iso));
+  return `${`${h}`.padStart(2, '0')}:${`${min}`.padStart(2, '0')}`;
+};
+
+/**
+ * 복약 건 한 항목. 항상 정확히 2줄 (R-069): 넘치면 말줄임하되, 상태와 모의·시뮬 표시는 오른쪽 고정 칸이라 잘리지 않는다.
+ * 1줄: 날짜(같은 날 흐리게) · 시간대 · 예정 시각 | 상태. 2줄: 기록 시각 · 판정자 · 사유(짧게) | 모의·시뮬.
+ * 특이사항 검색 결과에는 리필 확인 요청만 있는 건이 handoff 없이 들어올 수 있다 (R-052) → 검색 사유나 "약통 확인"으로 표시.
+ * 화면 낭독 이름에는 줄이지 않은 전체 문장을 넣는다
+ */
+function EventRow({ ev, search, today, first, last }: { ev: DoseEvent; search: Search | null; today: string; first: boolean; last: boolean }) {
+  const st = shortStatus(ev);
   const fg = TONE[st.tone].fg;
-  const extra = search?.reason
+  const extraReason: string | null = search?.reason
     ? ev.handoff?.reason === search.reason
       ? null
-      : reasonTitle(search.reason)
+      : search.reason
     : !ev.handoff && (search?.filter === 'handoff' || (search?.filter === 'exceptions' && ev.outcome !== 'not_taken'))
-      ? '약통 확인 요청'
+      ? 'refill_unconfirmed'
       : null;
-  const handoffNote = ev.handoff && ev.outcome_source === 'guardian' ? reasonTitle(ev.handoff.reason) : null;
-  const judge = ev.outcome_source === 'guardian' ? `${ev.decided_by?.display_name ?? '보호자'} 판정` : ev.latest_reading ? 'AI 판독' : null;
-  const mock = ev.outcome_source !== 'guardian' && ev.latest_reading?.is_mock;
-  const recorded = ev.taken_at && ev.outcome === 'taken' ? `${spokenTime(new Date(ev.taken_at))} 기록` : null;
+  const reason = ev.handoff?.reason ?? null;
+  const judgeFull = ev.outcome_source === 'guardian' ? `${ev.decided_by?.display_name ?? '보호자'} 판정` : ev.latest_reading ? 'AI 판독' : null;
+  const judgeShort = ev.outcome_source === 'guardian' ? `${ev.decided_by?.display_name ?? '보호자'} 판정` : ev.latest_reading ? 'AI' : null;
+  const mock = ev.outcome_source !== 'guardian' && !!ev.latest_reading?.is_mock;
+  const recorded = ev.taken_at && ev.outcome === 'taken' ? ev.taken_at : null;
 
-  // 둘째 줄: 기록 시각 · 판정 · 인계 사유 · 모의·시뮬레이션 (보라 굵은 글자로 눈에 띄게)
-  const parts: ReactNode[] = [];
-  if (recorded) parts.push(recorded);
-  if (judge) parts.push(judge);
-  if (handoffNote)
-    parts.push(
-      <Text key="h" style={{ color: C.warn, fontWeight: '700' }}>
-        ⚠ {handoffNote}
+  // 2줄 글자 (짧게)
+  const line2: ReactNode[] = [];
+  if (recorded) line2.push(`${hhmm(recorded)} 기록`);
+  if (judgeShort) line2.push(judgeShort);
+  for (const r of new Set([reason, extraReason].filter((x): x is string => !!x))) {
+    line2.push(
+      <Text key={r} style={{ color: C.warn, fontWeight: '700' }}>
+        ⚠ {reasonShort(r)}
       </Text>,
     );
-  if (extra)
-    parts.push(
-      <Text key="e" style={{ color: C.warn, fontWeight: '700' }}>
-        ⚠ {extra}
-      </Text>,
-    );
-  if (mock)
-    parts.push(
-      <Text key="m" style={styles.mockText}>
-        모의 결과
-      </Text>,
-    );
-  if (ev.is_simulated)
-    parts.push(
-      <Text key="s" style={styles.mockText}>
-        시뮬레이션
-      </Text>,
-    );
+  }
+  if (!line2.length) line2.push(ev.state === 'scheduled' ? '아직 복약 시각 전' : ev.outcome === 'not_taken' ? '기록 없음' : '기다리는 중');
 
   const a11y = [
-    `${dateLabelOfKey(ev.date)}${ev.date === today ? ' 오늘' : ''} ${doseName(ev)} ${spokenTime(new Date(ev.scheduled_at))}`,
-    st.label,
-    recorded,
-    judge,
-    handoffNote,
-    extra,
+    `${dateLabelOfKey(ev.date)}${ev.date === today ? ' 오늘' : ''} ${TIME_OF_DAY_LABELS[ev.slot.time_of_day]} ${spokenTime(new Date(ev.scheduled_at))} 예정`,
+    doseStatus(ev).label,
+    recorded ? `${spokenTime(new Date(recorded))} 기록` : null,
+    judgeFull,
+    reason ? reasonTitle(reason) : null,
+    extraReason ? reasonTitle(extraReason) : null,
     mock ? '모의 결과, 실제 AI 아님' : null,
-    ev.is_simulated ? '시뮬레이션' : null,
+    ev.is_simulated ? '시뮬레이션, 실제 복약 시각 알림 아님' : null,
   ]
     .filter(Boolean)
     .join(', ');
+
   const body = (
     <>
       <View style={{ flex: 1, gap: 1 }}>
-        {/* 1줄: 날짜 + 시간대·예정 시각. 2줄: 상태(기호 + 글자, 상태 색) · 기록 시각 · 판정 · 인계 사유 · 모의/시뮬레이션 */}
-        <GText variant="bodyStrong">
-          <DatePrefix dateKey={ev.date} today={today} first={first} />
-          {'  '}
-          {TIME_OF_DAY_LABELS[ev.slot.time_of_day]} · {spokenTime(new Date(ev.scheduled_at))}
-        </GText>
-        <View style={styles.line2}>
-          <View style={{ paddingTop: 3 }}>
-            <Icon name={st.icon} size={17} color={fg} strokeWidth={2.4} />
+        <View style={styles.line}>
+          <GText variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>
+            <DatePrefix dateKey={ev.date} today={today} first={first} />
+            {'  '}
+            {TIME_OF_DAY_LABELS[ev.slot.time_of_day]} {hhmm(ev.scheduled_at)}
+          </GText>
+          <View style={styles.fixed}>
+            <Icon name={st.icon} size={18} color={fg} strokeWidth={2.4} />
+            <GText variant="bodyStrong" color={fg}>
+              {st.label}
+            </GText>
           </View>
-          <GText variant="sub" color={C.sub} style={{ flex: 1 }}>
-            <Text style={{ color: fg, fontWeight: '700' }}>{st.label}</Text>
-            {parts.map((p, i) => (
+        </View>
+        <View style={styles.line}>
+          <GText variant="sub" color={C.sub} numberOfLines={1} style={{ flex: 1 }}>
+            {line2.map((p, i) => (
               <Fragment key={i}>
-                {' · '}
+                {i ? ' · ' : ''}
                 {p}
               </Fragment>
             ))}
           </GText>
+          {mock || ev.is_simulated ? (
+            <View style={[styles.fixed, { gap: 4 }]}>
+              {mock ? <Text style={styles.mockMark}>모의</Text> : null}
+              {ev.is_simulated ? <Text style={styles.mockMark}>시뮬</Text> : null}
+            </View>
+          ) : null}
         </View>
       </View>
       {ev.handoff ? <Icon name="chevronRight" size={20} color={C.muted} /> : null}
@@ -488,7 +514,18 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, minHeight: 48, paddingHorizontal: 8, marginHorizontal: -8 },
   rowLine: { borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.line },
   mockText: { color: C.mock, fontWeight: '800' },
-  line2: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 },
+  line: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  fixed: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 0 },
+  mockMark: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '800',
+    color: C.onMock,
+    backgroundColor: C.mock,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
   pager: { flexDirection: 'row', gap: 10, marginTop: 4 },
   dateRow: {
     flexDirection: 'row',
