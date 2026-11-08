@@ -1,10 +1,23 @@
 import { router } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, BackHandler, Modal, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api, guardianMessage, type Device, type NotificationStatus, type Settings, type UnchangedMode } from '@/api';
-import { ErrorText, GButton, GField, GScreen, GText, IconBubble, ListGroup, ListRow, Notice, RadioRow, TONE } from '@/components/guardian/ui';
+import {
+  ErrorText,
+  GButton,
+  GField,
+  GScreen,
+  GText,
+  IconBubble,
+  ListGroup,
+  ListRow,
+  Notice,
+  RadioRow,
+  TONE,
+  useKeyboardOverlap,
+} from '@/components/guardian/ui';
 import { useRole } from '@/lib/role';
 import { onPushStatus, pushStatus, type PushStatus } from '@/notify/guardianPush';
 import { spokenTime } from '@/lib/time';
@@ -100,121 +113,125 @@ export default function Settings() {
   const unchanged = UNCHANGED_OPTIONS.find((o) => o.key === cur.unchanged_mode) ?? UNCHANGED_OPTIONS[0];
 
   return (
-    <GScreen inTabs dense>
-      <GText variant="title" accessibilityRole="header">
-        설정
-      </GText>
+    <View style={{ flex: 1 }}>
+      <GScreen inTabs dense>
+        <GText variant="title" accessibilityRole="header">
+          설정
+        </GText>
 
-      <Group title="가족">
-        <ListRow
-          dense
-          icon="user"
-          title="어르신 호칭"
-          subtitle={`어르신 화면에 보이는 내 이름: ${me.device.display_name}`}
-          right={<Value>{cur.elder_display_name}</Value>}
-          accessibilityLabel={`어르신 호칭 ${cur.elder_display_name}. 바꾸기`}
-          onPress={() => setSheet('name')}
-        />
-      </Group>
-
-      <Group title="약통과 시각">
-        <ListRow dense icon="clock" title="복약 시각 바꾸기" onPress={() => router.push('/guardian/schedule')} />
-        <ListRow dense icon="pillbox" title="약통 다시 등록" onPress={() => router.push('/guardian/pillbox')} />
-        <ListRow dense icon="camera" title="약통 채우기" onPress={() => router.push('/guardian/refill')} />
-      </Group>
-
-      <Group title="알림과 사진">
-        <ListRow
-          dense
-          icon="pillbox"
-          title="약 칸이 그대로일 때"
-          right={<Value>{unchanged.short}</Value>}
-          accessibilityLabel={`약 칸이 그대로일 때: ${unchanged.title}. 바꾸기`}
-          onPress={() => setSheet('unchanged')}
-        />
-        <ListRow
-          dense
-          icon="bell"
-          iconTone={pushInfo.tone}
-          title="확인이 필요할 때 알림"
-          accessibilityLabel={`확인이 필요할 때 알림: ${pushLabel}. ${push === 'registered' ? '' : pushInfo.text}`}
-          subtitle={
-            <GText variant="sub" color={C.sub}>
-              <Text style={{ color: TONE[pushInfo.tone].fg, fontWeight: '700' }}>{pushLabel}</Text>
-              {push === 'registered' ? '' : ` · ${pushInfo.text}`}
-            </GText>
-          }
-        />
-        <View style={styles.switchRow}>
-          <IconBubble name="calendar" size={36} />
-          <View style={{ flex: 1 }}>
-            <GText variant="bodyStrong">하루 요약 알림 {cur.summary_push_time}</GText>
-            <GText variant="sub" color={C.sub}>
-              {cur.summary_push_enabled ? '켜짐' : '꺼짐: 요약은 앱 안에서만 보여요'}
-            </GText>
-          </View>
-          <Switch
-            accessibilityLabel={`하루 요약을 ${cur.summary_push_time}에 알림으로 받기`}
-            value={cur.summary_push_enabled}
-            onValueChange={(v) => void put({ summary_push_enabled: v })}
-            trackColor={{ true: C.primary, false: '#C5CEDA' }}
-            thumbColor="#FFFFFF"
-          />
-        </View>
-        <ListRow
-          dense
-          icon="image"
-          title="사진 보관 기간"
-          right={<Value>{`${cur.photo_retention_days}일`}</Value>}
-          accessibilityLabel={`사진 보관 기간 ${cur.photo_retention_days}일. 바꾸기`}
-          onPress={() => setSheet('retention')}
-        />
-      </Group>
-
-      <Group title="연결된 폰">
-        {(devices ?? []).map((d) => (
+        <Group title="가족">
           <ListRow
-            key={d.id}
             dense
-            icon={d.role === 'elder' ? 'smartphone' : 'user'}
-            iconTone={d.role === 'elder' ? 'info' : 'neutral'}
-            title={`${d.role === 'elder' ? '어르신 폰' : '보호자 폰'} · ${d.display_name}${d.is_me ? ' (이 폰)' : ''}`}
-            right={<GButton compact variant="danger" label="해제" accessibilityLabel={`${d.display_name} 연결 해제`} onPress={() => confirmUnpair(d)} />}
-          >
-            {d.role === 'elder' ? <ElderNotificationStatus status={d.notification_status} /> : null}
-          </ListRow>
-        ))}
-        {!devices?.some((d) => d.role === 'elder') ? (
-          <ListRow dense icon="link" title="어르신 폰 연결" onPress={() => router.push('/guardian/connect')} />
-        ) : null}
-      </Group>
-      {msg ? <ErrorText>{msg}</ErrorText> : null}
+            icon="user"
+            title="어르신 호칭"
+            subtitle={`어르신 화면에 보이는 내 이름: ${me.device.display_name}`}
+            right={<Value>{cur.elder_display_name}</Value>}
+            accessibilityLabel={`어르신 호칭 ${cur.elder_display_name}. 바꾸기`}
+            onPress={() => setSheet('name')}
+          />
+        </Group>
 
-      <NameSheet
-        visible={sheet === 'name'}
-        value={cur.elder_display_name}
-        onCancel={() => setSheet(null)}
-        onSave={async (name) => {
-          if (await put({ elder_display_name: name })) setSheet(null);
-        }}
-      />
-      <ChoiceSheet
-        visible={sheet === 'unchanged'}
-        title="약 칸이 그대로일 때"
-        onClose={() => setSheet(null)}
-        options={UNCHANGED_OPTIONS.map((o) => ({ key: o.key, title: o.title, detail: o.detail }))}
-        value={cur.unchanged_mode}
-        onPick={(k) => (setSheet(null), void put({ unchanged_mode: k as UnchangedMode }))}
-      />
-      <ChoiceSheet
-        visible={sheet === 'retention'}
-        title="사진 보관 기간"
-        onClose={() => setSheet(null)}
-        options={RETENTION_OPTIONS.map((d) => ({ key: `${d}`, title: `${d}일${d === 90 ? ' (기본)' : ''}` }))}
-        value={`${cur.photo_retention_days}`}
-        onPick={(k) => (setSheet(null), void put({ photo_retention_days: Number(k) }))}
-      />
-    </GScreen>
+        <Group title="약통과 시각">
+          <ListRow dense icon="clock" title="복약 시각 바꾸기" onPress={() => router.push('/guardian/schedule')} />
+          <ListRow dense icon="pillbox" title="약통 다시 등록" onPress={() => router.push('/guardian/pillbox')} />
+          <ListRow dense icon="camera" title="약통 채우기" onPress={() => router.push('/guardian/refill')} />
+        </Group>
+
+        <Group title="알림과 사진">
+          <ListRow
+            dense
+            icon="pillbox"
+            title="약 칸이 그대로일 때"
+            right={<Value>{unchanged.short}</Value>}
+            accessibilityLabel={`약 칸이 그대로일 때: ${unchanged.title}. 바꾸기`}
+            onPress={() => setSheet('unchanged')}
+          />
+          <ListRow
+            dense
+            icon="bell"
+            iconTone={pushInfo.tone}
+            title="확인이 필요할 때 알림"
+            accessibilityLabel={`확인이 필요할 때 알림: ${pushLabel}. ${push === 'registered' ? '' : pushInfo.text}`}
+            subtitle={
+              <GText variant="sub" color={C.sub}>
+                <Text style={{ color: TONE[pushInfo.tone].fg, fontWeight: '700' }}>{pushLabel}</Text>
+                {push === 'registered' ? '' : ` · ${pushInfo.text}`}
+              </GText>
+            }
+          />
+          <View style={styles.switchRow}>
+            <IconBubble name="calendar" size={36} />
+            <View style={{ flex: 1 }}>
+              <GText variant="bodyStrong">하루 요약 알림 {cur.summary_push_time}</GText>
+              <GText variant="sub" color={C.sub}>
+                {cur.summary_push_enabled ? '켜짐' : '꺼짐: 요약은 앱 안에서만 보여요'}
+              </GText>
+            </View>
+            <Switch
+              accessibilityLabel={`하루 요약을 ${cur.summary_push_time}에 알림으로 받기`}
+              value={cur.summary_push_enabled}
+              onValueChange={(v) => void put({ summary_push_enabled: v })}
+              trackColor={{ true: C.primary, false: '#C5CEDA' }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+          <ListRow
+            dense
+            icon="image"
+            title="사진 보관 기간"
+            right={<Value>{`${cur.photo_retention_days}일`}</Value>}
+            accessibilityLabel={`사진 보관 기간 ${cur.photo_retention_days}일. 바꾸기`}
+            onPress={() => setSheet('retention')}
+          />
+        </Group>
+
+        <Group title="연결된 폰">
+          {(devices ?? []).map((d) => (
+            <ListRow
+              key={d.id}
+              dense
+              icon={d.role === 'elder' ? 'smartphone' : 'user'}
+              iconTone={d.role === 'elder' ? 'info' : 'neutral'}
+              title={`${d.role === 'elder' ? '어르신 폰' : '보호자 폰'} · ${d.display_name}${d.is_me ? ' (이 폰)' : ''}`}
+              right={<GButton compact variant="danger" label="해제" accessibilityLabel={`${d.display_name} 연결 해제`} onPress={() => confirmUnpair(d)} />}
+            >
+              {d.role === 'elder' ? <ElderNotificationStatus status={d.notification_status} /> : null}
+            </ListRow>
+          ))}
+          {!devices?.some((d) => d.role === 'elder') ? (
+            <ListRow dense icon="link" title="어르신 폰 연결" onPress={() => router.push('/guardian/connect')} />
+          ) : null}
+        </Group>
+        {msg ? <ErrorText>{msg}</ErrorText> : null}
+
+        <ChoiceSheet
+          visible={sheet === 'unchanged'}
+          title="약 칸이 그대로일 때"
+          onClose={() => setSheet(null)}
+          options={UNCHANGED_OPTIONS.map((o) => ({ key: o.key, title: o.title, detail: o.detail }))}
+          value={cur.unchanged_mode}
+          onPick={(k) => (setSheet(null), void put({ unchanged_mode: k as UnchangedMode }))}
+        />
+        <ChoiceSheet
+          visible={sheet === 'retention'}
+          title="사진 보관 기간"
+          onClose={() => setSheet(null)}
+          options={RETENTION_OPTIONS.map((d) => ({ key: `${d}`, title: `${d}일${d === 90 ? ' (기본)' : ''}` }))}
+          value={`${cur.photo_retention_days}`}
+          onPick={(k) => (setSheet(null), void put({ photo_retention_days: Number(k) }))}
+        />
+      </GScreen>
+      {/* 입력이 있는 시트는 화면 안(스크롤 밖)에 띄운다. Modal 은 별도 창이라 키보드 높이를 알 수 없다 (T-FE22a) */}
+      {sheet === 'name' ? (
+        <NameSheet
+          value={cur.elder_display_name}
+          onCancel={() => setSheet(null)}
+          onSave={async (name) => {
+            if (await put({ elder_display_name: name })) setSheet(null);
+          }}
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -239,32 +256,50 @@ function Value({ children }: { children: ReactNode }) {
   );
 }
 
-/** 아래에서 올라오는 시트. 키보드가 뜨면 시트가 키보드 위로 올라간다 */
+/** 아래에서 올라오는 선택 시트 (입력 없음) */
 function Sheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: ReactNode }) {
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable style={styles.scrim} accessibilityRole="button" accessibilityLabel="닫기" onPress={onClose} />
-        <View style={[styles.sheet, { paddingBottom: 16 + insets.bottom }]}>
-          <GText variant="section" accessibilityRole="header">
-            {title}
-          </GText>
-          {children}
-        </View>
-      </KeyboardAvoidingView>
+      <Pressable style={styles.scrim} accessibilityRole="button" accessibilityLabel="닫기" onPress={onClose} />
+      <View style={[styles.sheet, { paddingBottom: 16 + insets.bottom }]}>
+        <GText variant="section" accessibilityRole="header">
+          {title}
+        </GText>
+        {children}
+      </View>
     </Modal>
   );
 }
 
-function NameSheet({ visible, value, onCancel, onSave }: { visible: boolean; value: string; onCancel: () => void; onSave: (name: string) => Promise<void> }) {
+/**
+ * 입력이 있는 시트. 화면 안에 겹쳐 띄우고, 키보드가 가리는 만큼 아래 여백을 줘서 시트가 키보드 바로 위에 오게 한다 (T-FE22a).
+ * Android 뒤로 가기는 시트를 닫는다
+ */
+function InScreenSheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const kb = useKeyboardOverlap();
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => (onClose(), true));
+    return () => sub.remove();
+  }, [onClose]);
+  return (
+    <View ref={kb.ref} style={[StyleSheet.absoluteFill, { paddingBottom: kb.overlap }]} accessibilityViewIsModal>
+      <Pressable style={styles.scrim} accessibilityRole="button" accessibilityLabel="닫기" onPress={onClose} />
+      <View style={[styles.sheet, { paddingBottom: 16 }]}>
+        <GText variant="section" accessibilityRole="header">
+          {title}
+        </GText>
+        {children}
+      </View>
+    </View>
+  );
+}
+
+function NameSheet({ value, onCancel, onSave }: { value: string; onCancel: () => void; onSave: (name: string) => Promise<void> }) {
   const [name, setName] = useState(value);
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (visible) setName(value);
-  }, [visible, value]);
   return (
-    <Sheet visible={visible} title="어르신 호칭" onClose={onCancel}>
+    <InScreenSheet title="어르신 호칭" onClose={onCancel}>
       <GField label="어르신을 뭐라고 부르세요?" value={name} onChangeText={setName} placeholder="예: 어머니" hint="어르신 화면의 말은 이 호칭으로 나와요." />
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}>
@@ -284,7 +319,7 @@ function NameSheet({ visible, value, onCancel, onSave }: { visible: boolean; val
           />
         </View>
       </View>
-    </Sheet>
+    </InScreenSheet>
   );
 }
 
