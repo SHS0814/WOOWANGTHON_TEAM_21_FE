@@ -1,10 +1,12 @@
 import { Redirect, router } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
-import { api } from '@/api';
+import { api, type DoseEvent } from '@/api';
+import { DayTimeline } from '@/components/guardian/DayTimeline';
+import { Icon } from '@/components/guardian/Icon';
 import { Section, GButton, GScreen, GText, IconBubble, ListGroup, ListRow, MockTag, Notice, SectionTitle, StatusChip } from '@/components/guardian/ui';
-import { SimulationTag } from '@/components/MockBanner';
-import { doseStatus, takenCount } from '@/lib/doseStatus';
+import { takenCount } from '@/lib/doseStatus';
 import { reasonTitle } from '@/lib/handoff';
 import { doseName } from '@/lib/doseLabel';
 import { dateKey, longDate, spokenTime, TIME_OF_DAY_LABELS, weekdayLong } from '@/lib/time';
@@ -15,8 +17,8 @@ import { guardian } from '@/theme';
 const C = guardian.color;
 
 /**
- * G4 홈. 오늘 요약 카드 → 확인할 일 → 다음 복약 → 약통 (T-FE14).
- * 정상인 날은 요약 카드 한 장만 보이는 조용한 화면이 정상이다 (원칙 2)
+ * G4 홈 (R-051, T-FE16). 스크롤 없이 한 화면: 오늘 요약(가로 시간축) → 확인할 일(정해진 개수, 나머지는 펼침)
+ * → 다음 할 일(화면 아래 고정). 정상인 날은 요약 한 덩어리만 보이는 조용한 화면이 정상이다 (원칙 2)
  */
 export default function GuardianHome() {
   const { data: hasToken } = useApiData(() => api.hasToken());
@@ -28,6 +30,12 @@ export default function GuardianHome() {
   const { data: box } = useApiData(() => api.currentPillbox().catch(() => null));
   // 어르신 폰 알림 준비가 안 됐을 때만 경고 (R-032, 원칙 2: 정상이면 아무것도 안 보인다)
   const { data: today } = useApiData(() => api.today().catch(() => null), [], { pollMs: POLL_MS });
+  const [expanded, setExpanded] = useState(false);
+  const { height } = useWindowDimensions();
+  // 확인할 일을 몇 건까지 펼쳐 둘지. 기본 2건, 화면이 넘치면 1건 → 0건으로 줄인다 (R-051: 스크롤 없이 한 화면)
+  const [fit, setFit] = useState(2);
+  const openCount = open?.length ?? 0;
+  useEffect(() => setFit(2), [openCount, height]);
 
   if (hasToken === undefined) return null;
   if (!hasToken) return <Redirect href="/guardian/connect" />;
@@ -40,17 +48,89 @@ export default function GuardianHome() {
   const items = today?.items ?? [];
   const next = today?.next_event;
 
+  const openEvent = (ev: DoseEvent) =>
+    ev.handoff ? router.push({ pathname: '/guardian/handoff/[id]', params: { id: ev.handoff.id } }) : router.push('/guardian/records');
+
+  // 확인할 일은 정해진 개수만 보이고 나머지는 펼친다. 작은 폰은 1건 (R-051: 다음 할 일이 항상 보이게)
+  const compact = height < 760;
+  const limit = fit;
+  const onMeasure = (viewport: number, content: number) => {
+    if (!expanded && content > viewport + 1 && fit > 0) setFit((f) => Math.max(0, f - 1));
+  };
+  const mockTags =
+    summary && (summary.includes_mock || summary.includes_simulated) ? (
+      <>
+        {summary.includes_mock ? <MockTag label="모의 결과 포함" /> : null}
+        {summary.includes_simulated ? <MockTag label="시뮬레이션 포함" /> : null}
+      </>
+    ) : null;
+  const openList = open ?? [];
+  const shown = expanded ? openList : openList.slice(0, limit);
+  const hidden = openList.length - shown.length;
+
+  // 다음 할 일은 화면 아래에 고정한다 (확인할 일을 펼쳐도 보인다)
+  const nextRows =
+    next || me.family.has_pillbox ? (
+      <View>
+        {compact ? null : (
+          <GText variant="label" color={C.sub} accessibilityRole="header">
+            다음 할 일
+          </GText>
+        )}
+        <ListGroup style={{ marginTop: 0, borderBottomWidth: 0 }}>
+          {next ? (
+            <ListRow
+              dense
+              icon="clock"
+              title={`다음 복약 · ${TIME_OF_DAY_LABELS[next.time_of_day]}`}
+              subtitle={`${dateKey(new Date(next.scheduled_at)) === dateKey(now) ? '오늘' : longDate(new Date(next.scheduled_at))} ${spokenTime(new Date(next.scheduled_at))}에 여쭤봐요`}
+            />
+          ) : null}
+          {me.family.has_pillbox ? (
+            <ListRow
+              dense
+              icon="pillbox"
+              iconTone={box?.refill_status.needs_refill || box?.pillbox_mismatch.detected ? 'warn' : 'info'}
+              title={box ? `약통 남은 칸 ${box.refill_status.remaining_cells}칸` : '약통 채우기'}
+              subtitle={
+                box?.pillbox_mismatch.detected ? (
+                  <GText variant="sub" color={C.warn} style={{ fontWeight: '700' }}>
+                    ! 약통 상태가 기록과 달라요.
+                  </GText>
+                ) : box?.refill_status.needs_refill ? (
+                  <GText variant="sub" color={C.warn} style={{ fontWeight: '700' }}>
+                    ! 곧 채워야 해요.
+                  </GText>
+                ) : (
+                  '채운 뒤 사진을 찍어 기록해요'
+                )
+              }
+              accessibilityLabel={`${box ? `약통 남은 칸 ${box.refill_status.remaining_cells}칸` : '약통'}. 약통 채우기 화면 열기`}
+              onPress={() => router.push('/guardian/refill')}
+            />
+          ) : null}
+        </ListGroup>
+      </View>
+    ) : undefined;
+
   return (
-    <GScreen inTabs eyebrow={`${longDate(now)} ${weekdayLong(now)}`} title={`${elder} 오늘`}>
+    <GScreen inTabs dense footer={nextRows} onMeasure={onMeasure}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+        <GText variant="title" accessibilityRole="header">
+          {elder} 오늘
+        </GText>
+        <GText variant="label" color={C.sub}>
+          {longDate(now)} {weekdayLong(now)}
+        </GText>
+      </View>
+
       {today?.elder_notification_warning ? (
         <Notice
           tone="warn"
           title="어르신 폰 알림 설정이 꺼져 있어 알림이 늦을 수 있어요"
           onPress={() => router.push('/guardian/settings')}
           accessibilityLabel="어르신 폰 알림 설정이 꺼져 있어 알림이 늦을 수 있어요. 무엇을 켜야 하는지 보기"
-        >
-          무엇을 켜야 하는지 보기
-        </Notice>
+        />
       ) : null}
 
       {!me.family.has_pillbox ? (
@@ -73,25 +153,22 @@ export default function GuardianHome() {
         />
       ) : null}
 
-      {/* 오늘 요약 */}
+      {/* 오늘 요약: 숫자 + 가로 시간축 */}
       {summary && c ? (
-        <Section>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-            <View style={{ flex: 1 }}>
-              <GText variant="label" color={C.sub}>
-                오늘 복약 기록
-              </GText>
-              <View
-                style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}
-                accessible
-                accessibilityLabel={`오늘 ${c.scheduled}번 중 ${takenCount(summary)}번 기록`}
-              >
-                <GText variant="stat">{takenCount(summary)}</GText>
+        <Section style={{ paddingBottom: 14, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: 6 }}
+              accessible
+              accessibilityLabel={`오늘 ${c.scheduled}번 중 ${takenCount(summary)}번 기록${c.pending ? `, ${c.pending}번 남음` : ''}`}
+            >
+              <GText variant="title">
+                {takenCount(summary)}
                 <GText variant="section" color={C.sub}>
                   {' '}
-                  / {c.scheduled}번
+                  / {c.scheduled}번 기록
                 </GText>
-              </View>
+              </GText>
             </View>
             {summary.all_normal ? (
               <StatusChip tone="ok" label="모두 정상" />
@@ -101,120 +178,57 @@ export default function GuardianHome() {
               <StatusChip tone="neutral" label={`${c.pending}번 남음`} />
             ) : null}
           </View>
-          {c.scheduled > 0 ? <Progress done={takenCount(summary)} total={c.scheduled} /> : null}
-          {summary.all_normal ? (
-            <GText color={C.sub}>✓ 오늘 {c.scheduled}번 모두 정상이에요.</GText>
+          {items.some((e) => !e.carried_over) ? (
+            <DayTimeline items={items} now={now} onOpen={openEvent} extra={mockTags} />
           ) : (
-            <GText color={C.sub}>
-              오늘 {c.scheduled}번 중 {takenCount(summary)}번 기록
-              {c.open_handoffs ? `, 처리할 일 ${c.open_handoffs}건` : ''}
-              {c.pending ? `, ${c.pending}번 남음` : ''}
-            </GText>
+            mockTags
           )}
-          {summary.includes_mock || summary.includes_simulated ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {summary.includes_mock ? <MockTag label="모의 결과 포함" /> : null}
-              {summary.includes_simulated ? <MockTag label="시뮬레이션 포함" /> : null}
-            </View>
-          ) : null}
-          {items.length ? (
-            <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingTop: 4 }}>
-              {items.map((ev) => {
-                const st = doseStatus(ev);
-                return (
-                  <View key={ev.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}>
-                    <View style={{ flex: 1 }}>
-                      <GText variant="bodyStrong">{doseName(ev)}</GText>
-                      <GText variant="sub" color={C.sub}>
-                        {spokenTime(new Date(ev.scheduled_at))}
-                      </GText>
-                      {ev.is_simulated ? <MockTag label="시뮬레이션" /> : null}
-                    </View>
-                    <StatusChip tone={st.tone} label={st.label} icon={st.icon} />
-                  </View>
-                );
-              })}
-            </View>
-          ) : null}
         </Section>
       ) : null}
 
       {/* 확인할 일 */}
-      {open && open.length > 0 ? (
-        <>
-          <SectionTitle right={<StatusChip tone="danger" label={`${open.length}건`} />}>확인할 일</SectionTitle>
-          <ListGroup>
-            {open.map((h) => (
+      {openList.length > 0 ? (
+        <View style={{ marginTop: -8 }}>
+          <SectionTitle right={<StatusChip tone="danger" label={`${openList.length}건`} />}>확인할 일</SectionTitle>
+          <ListGroup style={{ marginTop: 4 }}>
+            {shown.map((h) => (
               <ListRow
                 key={h.id}
+                dense
                 icon="alert"
                 iconTone="danger"
                 title={reasonTitle(h.reason)}
                 titleColor={C.danger}
-                subtitle={`${doseName(h.dose_event)} 약 · ${spokenTime(new Date(h.notified_at))} 알림`}
-                accessibilityLabel={`${doseName(h.dose_event)} 약, ${reasonTitle(h.reason)}. 자세히 보기`}
-                onPress={() => router.push({ pathname: '/guardian/handoff/[id]', params: { id: h.id } })}
-              >
-                {h.dose_event.is_simulated ? (
-                  <View style={{ marginTop: 4 }}>
-                    <SimulationTag />
+                subtitle={
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 2 }}>
+                    <GText variant="sub" color={C.sub}>
+                      {doseName(h.dose_event)} 약 · {spokenTime(new Date(h.notified_at))} 알림
+                    </GText>
+                    {h.dose_event.is_simulated ? <MockTag label="시뮬레이션" a11y="시뮬레이션, 실제 복약 시각 알림 아님" /> : null}
                   </View>
-                ) : null}
-                <GText variant="label" color={C.primaryStrong} style={{ marginTop: 2 }}>
-                  자세히 보기
-                </GText>
-              </ListRow>
-            ))}
-          </ListGroup>
-        </>
-      ) : null}
-
-      {/* 다음 복약과 약통 */}
-      {next || me.family.has_pillbox ? (
-        <>
-          <SectionTitle>다음 할 일</SectionTitle>
-          <ListGroup>
-            {next ? (
-              <ListRow
-                icon="clock"
-                title={`다음 복약 · ${TIME_OF_DAY_LABELS[next.time_of_day]}`}
-                subtitle={`${dateKey(new Date(next.scheduled_at)) === dateKey(now) ? '오늘' : longDate(new Date(next.scheduled_at))} ${spokenTime(new Date(next.scheduled_at))}에 여쭤봐요`}
+                }
+                accessibilityLabel={`${doseName(h.dose_event)} 약, ${reasonTitle(h.reason)}${h.dose_event.is_simulated ? ', 시뮬레이션' : ''}. 자세히 보기`}
+                onPress={() => router.push({ pathname: '/guardian/handoff/[id]', params: { id: h.id } })}
               />
-            ) : null}
-            {me.family.has_pillbox ? (
-              <ListRow
-                icon="pillbox"
-                iconTone={box?.refill_status.needs_refill || box?.pillbox_mismatch.detected ? 'warn' : 'info'}
-                title={box ? `약통 남은 칸 ${box.refill_status.remaining_cells}칸` : '약통 채우기'}
-                subtitle={box?.refill_status.needs_refill ? undefined : '채운 뒤 사진을 찍어 기록해요'}
-                accessibilityLabel={`${box ? `약통 남은 칸 ${box.refill_status.remaining_cells}칸` : '약통'}. 약통 채우기 화면 열기`}
-                onPress={() => router.push('/guardian/refill')}
+            ))}
+            {openList.length > limit ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={expanded ? '확인할 일 접기' : `확인할 일 ${hidden}건 더 보기`}
+                accessibilityState={{ expanded }}
+                onPress={() => setExpanded((v) => !v)}
+                style={({ pressed }) => [styles.more, pressed && { backgroundColor: C.neutralSoft }]}
               >
-                {box?.refill_status.needs_refill ? (
-                  <GText variant="sub" color={C.warn} style={{ fontWeight: '700' }}>
-                    ! 약통에 남은 칸이 {box.refill_status.remaining_cells}칸이에요.
-                  </GText>
-                ) : null}
-                {box?.pillbox_mismatch.detected ? (
-                  <GText variant="sub" color={C.warn} style={{ fontWeight: '700' }}>
-                    ! 약통 상태가 기록과 달라요.
-                  </GText>
-                ) : null}
-              </ListRow>
+                <GText variant="label" color={C.primaryStrong}>
+                  {expanded ? '접기' : shown.length ? `${hidden}건 더 보기` : `${hidden}건 보기`}
+                </GText>
+                <Icon name={expanded ? 'chevronUp' : 'chevronDown'} size={20} color={C.primaryStrong} strokeWidth={2.4} />
+              </Pressable>
             ) : null}
           </ListGroup>
-        </>
+        </View>
       ) : null}
     </GScreen>
-  );
-}
-
-function Progress({ done, total }: { done: number; total: number }) {
-  const pct = Math.min(1, total ? done / total : 0);
-  return (
-    <View style={{ height: 8, borderRadius: 4, backgroundColor: C.neutralSoft, overflow: 'hidden' }}>
-      <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: C.primary, borderRadius: 4 }} />
-    </View>
   );
 }
 
@@ -249,3 +263,7 @@ function SetupCard({
     </Section>
   );
 }
+
+const styles = StyleSheet.create({
+  more: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 48, marginHorizontal: -8, paddingHorizontal: 8 },
+});
