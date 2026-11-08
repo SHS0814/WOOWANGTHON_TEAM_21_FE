@@ -12,6 +12,7 @@ import type {
   DetectResponse,
   Device,
   DoseEvent,
+  DoseEventQuery,
   ErrorBody,
   Handoff,
   HandoffListItem,
@@ -34,6 +35,7 @@ import type {
   Settings,
   SlotInput,
   Summary,
+  SummaryPeriod,
   TodayResponse,
   UploadResponse,
   Verdict,
@@ -231,8 +233,16 @@ class HttpApi implements Api {
     });
   }
 
-  async doseEvents(from: string, to: string) {
-    const q = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+  async doseEvents(from: string, to: string, query: DoseEventQuery = {}) {
+    const q = [
+      `from=${encodeURIComponent(from)}`,
+      `to=${encodeURIComponent(to)}`,
+      query.filter && `filter=${query.filter}`,
+      query.reason && `reason=${query.reason}`,
+      query.order && `order=${query.order}`,
+    ]
+      .filter(Boolean)
+      .join('&');
     return (await this.request<{ items: DoseEvent[] }>(`/dose-events?${q}`)).items;
   }
 
@@ -252,7 +262,7 @@ class HttpApi implements Api {
     return this.request<Photo>(`/photos/${encodeURIComponent(id)}`);
   }
 
-  async summaries(period: 'day' | 'week', from?: string, to?: string) {
+  async summaries(period: SummaryPeriod, from?: string, to?: string) {
     const q = [`period=${period}`, from && `from=${from}`, to && `to=${to}`].filter(Boolean).join('&');
     return (await this.request<{ items: Summary[] }>(`/summaries?${q}`)).items;
   }

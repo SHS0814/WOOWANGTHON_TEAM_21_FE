@@ -1,6 +1,6 @@
 // 보호자 화면·처음 설정 화면 전용 구성 요소 (R-047, T-FE14).
 // 어르신 화면이 쓰는 공용 컴포넌트(Text, BigButton, Screen 등)는 건드리지 않고 여기서 새로 만든다.
-import { Children, Fragment, isValidElement, useRef, useState, type ReactNode } from 'react';
+import { Children, Fragment, isValidElement, useRef, useState, type ReactNode, type Ref } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -9,6 +9,7 @@ import {
   Text,
   TextInput,
   View,
+  type ScrollViewInstance,
   type StyleProp,
   type TextProps,
   type TextStyle,
@@ -47,9 +48,11 @@ interface ScreenProps {
   dense?: boolean;
   /** 스크롤 영역 높이와 내용 높이를 알려준다 (홈이 넘치지 않게 줄이는 데 쓴다) */
   onMeasure?: (viewport: number, content: number) => void;
+  /** 화면 맨 위로 올리는 등 스크롤을 직접 다룰 때 */
+  scrollRef?: Ref<ScrollViewInstance>;
 }
 
-export function GScreen({ children, title, eyebrow, footer, scroll = true, center, inTabs, dense, onMeasure }: ScreenProps) {
+export function GScreen({ children, title, eyebrow, footer, scroll = true, center, inTabs, dense, onMeasure, scrollRef }: ScreenProps) {
   const insets = useSafeAreaInsets();
   const measured = useRef({ viewport: 0, content: 0 });
   const measure = (k: 'viewport' | 'content', v: number) => {
@@ -78,6 +81,7 @@ export function GScreen({ children, title, eyebrow, footer, scroll = true, cente
     <View style={s.root}>
       {scroll ? (
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={content}
           keyboardShouldPersistTaps="handled"
           onLayout={onMeasure ? (e) => measure('viewport', e.nativeEvent.layout.height) : undefined}
@@ -375,6 +379,41 @@ export function RadioRow({ selected, title, detail, onPress }: { selected: boole
   );
 }
 
+/** 여럿 중 하나를 고르는 알약 모양 버튼 줄 (기간·필터). 고른 것은 채움 + ✓ 로 표시한다 */
+export function ChoiceChips<K extends string>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: { key: K; label: string }[];
+  value: K;
+  onChange: (k: K) => void;
+  /** 화면 읽기용 묶음 이름 */
+  label: string;
+}) {
+  return (
+    <View style={s.choices} accessibilityRole="radiogroup" accessibilityLabel={label}>
+      {options.map((o) => {
+        const on = o.key === value;
+        return (
+          <Pressable
+            key={o.key}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: on, checked: on }}
+            accessibilityLabel={o.label}
+            onPress={() => onChange(o.key)}
+            style={({ pressed }) => [s.choice, on && s.choiceOn, pressed && !on && { backgroundColor: C.neutralSoft }]}
+          >
+            {on ? <Icon name="check" size={16} color={C.onPrimary} strokeWidth={2.8} /> : null}
+            <Text style={[s.choiceText, on && { color: C.onPrimary }]}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 // ── 입력 ──────────────────────────────────────────────
 
 export function GField({
@@ -523,6 +562,20 @@ const s = StyleSheet.create({
   btnText: { fontSize: 17, lineHeight: 23, fontWeight: '700', textAlign: 'center', flexShrink: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8, marginHorizontal: -8, paddingVertical: 14, minHeight: 64 },
   rowDense: { paddingVertical: 8, minHeight: 52 },
+  choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  choice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: guardian.radius.chip,
+    borderWidth: 1.5,
+    borderColor: '#C5CEDA',
+    backgroundColor: C.card,
+  },
+  choiceOn: { backgroundColor: C.primary, borderColor: C.primary },
+  choiceText: { fontSize: 16, lineHeight: 22, fontWeight: '700', color: C.text },
   radio: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#8C99A8', alignItems: 'center', justifyContent: 'center' },
   radioOn: { borderColor: C.primary },
   radioDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: C.primary },

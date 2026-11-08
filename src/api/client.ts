@@ -7,6 +7,7 @@ import type {
   DetectResponse,
   Device,
   DoseEvent,
+  DoseEventQuery,
   Handoff,
   HandoffListItem,
   Health,
@@ -28,6 +29,7 @@ import type {
   Settings,
   SlotInput,
   Summary,
+  SummaryPeriod,
   TodayResponse,
   UploadResponse,
   Verdict,
@@ -77,12 +79,12 @@ export interface Api {
   /** 3.17 */ today(): Promise<TodayResponse>;
   /** 3.18 판독이 끝날 때까지 기다린다 */
   uploadDosePhoto(eventId: string, photo: LocalPhoto, clientUploadId: string): Promise<UploadResponse>;
-  /** 3.19 */ doseEvents(from: string, to: string): Promise<DoseEvent[]>;
+  /** 3.19 기간 31일, 검색(filter·reason)이면 366일까지 (R-051) */ doseEvents(from: string, to: string, query?: DoseEventQuery): Promise<DoseEvent[]>;
   /** 3.20 */ handoffs(status?: 'open' | 'closed' | 'all'): Promise<HandoffListItem[]>;
   /** 3.21 */ handoff(id: string): Promise<Handoff>;
   /** 3.22 */ verdict(handoffId: string, verdict: Verdict): Promise<Handoff>;
   /** 3.23 */ photo(id: string): Promise<Photo>;
-  /** 3.25 */ summaries(period: 'day' | 'week', from?: string, to?: string): Promise<Summary[]>;
+  /** 3.25 하루 요약 366일까지, total 은 전체 합계 한 항목 (R-051) */ summaries(period: SummaryPeriod, from?: string, to?: string): Promise<Summary[]>;
   /** 3.26 */ settings(): Promise<Settings>;
   /** 3.26 */ putSettings(patch: Partial<Settings>): Promise<Settings>;
   /** 3.27 시연 트리거. 데모 가족이 아니면 ApiError(404, not_found) */ simulateDose(slotId: string): Promise<DoseEvent>;

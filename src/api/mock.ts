@@ -16,6 +16,7 @@ import type {
   CreateFamilyRequest,
   Device,
   DoseEvent,
+  DoseEventQuery,
   ExpectedState,
   Handoff,
   HandoffListItem,
@@ -38,6 +39,7 @@ import type {
   Slot,
   SlotInput,
   Summary,
+  SummaryPeriod,
   TimeOfDay,
   TodayResponse,
   UploadResponse,
@@ -166,6 +168,34 @@ function delay(ms: number) {
 function copy<T>(v: T): T {
   return v === null || v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T);
 }
+
+/** "YYYY-MM-DD" (기기 시간대) 의 낮 12시 */
+function dayOfKey(key: string): Date {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d, 12);
+}
+
+function addDays(key: string, n: number): string {
+  const d = dayOfKey(key);
+  d.setDate(d.getDate() + n);
+  return dateKey(d);
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((dayOfKey(to).getTime() - dayOfKey(from).getTime()) / 86_400_000);
+}
+
+/** 날짜·칸으로 정해지는 0~1 값. 모의 지난 기록이 열 때마다 같게 나오도록 */
+function seeded(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return ((h >>> 0) % 10_000) / 10_000;
+}
+
+/** 모의 지난 기록이 시작되는 날 (오늘부터 며칠 전). 1년 보기와 전체 보기가 달라지게 1년보다 짧게 둔다 */
+const MOCK_HISTORY_DAYS = 75;
+
+type PastEvent = DoseEvent & { refill_unconfirmed: boolean };
 
 function timeOfDayFromLabel(label: string): TimeOfDay | null {
   if (label.includes('아침')) return 'morning';
@@ -661,10 +691,85 @@ class MockApi implements Api {
     };
   }
 
-  async doseEvents(from: string, to: string) {
+  async doseEvents(from: string, to: string, query: DoseEventQuery = {}) {
     const { s } = await this.auth('guardian');
-    // 모의 구현은 오늘 건만 보관한다. 지난 날은 요약(3.25)의 모의 숫자만 있다
-    return s.eventsDate >= from && s.eventsDate <= to ? s.events.map((e) => this.view(e)) : [];
+    const search = !!(query.filter || query.reason);
+    // 3.19 (R-051): 검색이면 366일, 아니면 31일까지
+    if (from > to || daysBetween(from, to) + 1 > (search ? 366 : 31)) throw new ApiError(422, 'validation_error', '모의: 기간');
+    // 오늘 건은 저장된 상태, 지난 날은 날짜·칸으로 정해지는 모의 기록
+    const today: PastEvent[] = s.events.filter((e) => e.date >= from && e.date <= to).map((e) => ({ ...this.view(e), refill_unconfirmed: false }));
+    let items = [...this.pastEvents(from, to), ...today];
+    const exceptional = (e: PastEvent) => !!e.handoff || e.refill_unconfirmed || e.outcome === 'not_taken';
+    if (query.filter === 'exceptions') items = items.filter(exceptional);
+    if (query.filter === 'handoff') items = items.filter((e) => !!e.handoff || e.refill_unconfirmed);
+    if (query.filter === 'not_taken') items = items.filter((e) => e.outcome === 'not_taken');
+    if (query.filter === 'taken') items = items.filter((e) => e.outcome === 'taken');
+    // 리필 확인 요청(refill_unconfirmed)은 복약 건의 handoff 가 아니라 null 로 온다 (R-052 주의)
+    if (query.reason) items = items.filter((e) => e.handoff?.reason === query.reason || (query.reason === 'refill_unconfirmed' && e.refill_unconfirmed));
+    items.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at) * (query.order === 'desc' ? -1 : 1));
+    return items.map(({ refill_unconfirmed: _r, ...e }) => copy(e as DoseEvent));
+  }
+
+  /** 모의 지난 기록 (어제까지). 일정이 바뀌어도 지금 일정으로 만든다. 오늘 목록에 남은 전날 건은 빼고 만든다 */
+  private pastEvents(from: string, to: string): PastEvent[] {
+    const s = this.s;
+    const today = dateKey(new Date());
+    const start = addDays(today, -MOCK_HISTORY_DAYS);
+    const out: PastEvent[] = [];
+    const guardian = s.guardian ? { device_id: s.guardian.id, display_name: s.guardian.display_name } : null;
+    for (let key = from < start ? start : from; key <= to && key < today; key = addDays(key, 1)) {
+      const day = dayOfKey(key);
+      const slots = s.slots.filter((x) => x.weekday === mondayIndex(day)).sort((a, b) => a.dose_time.localeCompare(b.dose_time));
+      slots.forEach((slot, i) => {
+        if (s.events.some((e) => e.date === key && e.slot.cell_id === slot.cell_id)) return;
+        const at = iso(atTime(day, slot.dose_time));
+        const r = seeded(`${key}|${slot.cell_id}`);
+        const id = `past-${key}-${slot.cell_id}`;
+        const ev: PastEvent = this.withTimes({
+          id,
+          date: key,
+          slot: copy(slot),
+          scheduled_at: at,
+          state: 'done',
+          outcome: 'taken',
+          outcome_source: 'ai',
+          decided_by: null,
+          taken_at: addMin(at, Math.round(r * 1000) % 15),
+          resolved_at: null,
+          elder_status: 'recorded',
+          ask_times: [],
+          handoff_at: at,
+          retake_deadline_at: null,
+          photos: [],
+          is_mock: true,
+          is_simulated: false,
+          carried_over: false,
+          reminded_at: null,
+          latest_reading: null,
+          handoff: null,
+        }) as PastEvent;
+        ev.resolved_at = ev.taken_at;
+        ev.refill_unconfirmed = i === 0 && day.getDate() % 9 === 0;
+        // 대부분 정상, 가끔 인계 (무응답 → 드심/안 드심, 애매 → 드심, 칸 그대로 → 확인함)
+        const handoff = (reason: HandoffReason, verdict: 'taken' | 'not_taken' | 'acknowledged') => {
+          const verdictAt = addMin(at, 45);
+          ev.state = 'handed_off';
+          ev.outcome = verdict;
+          ev.outcome_source = 'guardian';
+          ev.decided_by = guardian;
+          ev.taken_at = verdict === 'taken' ? verdictAt : null;
+          ev.resolved_at = verdictAt;
+          ev.elder_status = verdict === 'taken' ? 'recorded' : 'no_record';
+          ev.handoff = { id: `past-h-${key}-${slot.cell_id}`, reason, notified_at: addMin(at, TIMING.no_response_handoff_min), verdict, verdict_at: verdictAt };
+        };
+        if (r >= 0.97) handoff('no_response', 'not_taken');
+        else if (r >= 0.93) handoff('unchanged', 'acknowledged');
+        else if (r >= 0.88) handoff('unclear', 'taken');
+        else if (r >= 0.83) handoff('no_response', 'taken');
+        out.push(ev);
+      });
+    }
+    return out;
   }
 
   /** backend.md 5.2 기대 상태 계산 (모의: 기준선은 모두 찬 칸, 지난 날 칸은 드셨다고 본다) */
@@ -812,6 +917,26 @@ class MockApi implements Api {
   async handoff(id: string): Promise<Handoff> {
     const { s } = await this.auth('guardian');
     const h = s.handoffs.find((x) => x.id === id);
+    if (!h && id.startsWith('past-h-')) {
+      // 모의 지난 기록의 인계 (이미 판정됨, 사진 없음)
+      const key = id.slice('past-h-'.length, 'past-h-'.length + 10);
+      const ev = this.pastEvents(key, key).find((e) => e.handoff?.id === id);
+      if (!ev || !ev.handoff) throw new ApiError(404, 'not_found', '모의');
+      const { refill_unconfirmed: _r, ...dose_event } = ev;
+      return copy({
+        id,
+        reason: ev.handoff.reason,
+        notified_at: ev.handoff.notified_at,
+        verdict: ev.handoff.verdict,
+        verdict_by: ev.decided_by,
+        verdict_at: ev.handoff.verdict_at,
+        allowed_verdicts: ALLOWED_VERDICTS[ev.handoff.reason],
+        late_photo: false,
+        dose_event,
+        readings: [],
+        layout: s.pillbox!.layout,
+      });
+    }
     if (!h) throw new ApiError(404, 'not_found', '모의');
     return { ...this.handoffItem(h), readings: copy(s.readings[h.event_id] ?? []), layout: copy(s.pillbox!.layout) };
   }
@@ -851,28 +976,77 @@ class MockApi implements Api {
 
   // ---- 3.25 ~ 3.27 ----
 
-  async summaries(period: 'day' | 'week'): Promise<Summary[]> {
-    const { s } = await this.auth('guardian');
-    const reasons = (): Summary['handoffs_by_reason'] => ({ no_response: 0, unclear: 0, unchanged: 0, double_suspected: 0, refill_unconfirmed: 0, refill_overdue: 0 });
-    // 지난 날은 모의 숫자 (모두 정상)
-    const pastDay = (d: Date): Summary => {
-      const n = s.slots.filter((x) => x.weekday === mondayIndex(d)).length;
-      return {
+  async summaries(period: SummaryPeriod, from?: string, to?: string): Promise<Summary[]> {
+    await this.auth('guardian');
+    const todayKey = dateKey(new Date());
+    const start = addDays(todayKey, -MOCK_HISTORY_DAYS);
+    if (period === 'total') {
+      // 3.25 period=total: 첫 복약 건 날짜부터 오늘까지 합계 한 항목
+      const days = this.daySummaries(start, todayKey);
+      return [{ ...this.sumOf(days, 'total'), period_start: start, period_end: todayKey }];
+    }
+    if (period === 'day') {
+      const f = from ?? addDays(todayKey, -6);
+      const t = to ?? todayKey;
+      if (f > t || daysBetween(f, t) + 1 > 366) throw new ApiError(422, 'validation_error', '모의: 기간');
+      return this.daySummaries(f, t);
+    }
+    // 주간: 이번 주 (월~오늘)
+    const monday = addDays(todayKey, -mondayIndex(new Date()));
+    const week = this.daySummaries(monday, todayKey);
+    return [{ ...this.sumOf(week, 'week'), period_start: monday, period_end: addDays(monday, 6) }];
+  }
+
+  private emptyReasons(): Summary['handoffs_by_reason'] {
+    return { no_response: 0, unclear: 0, unchanged: 0, double_suspected: 0, refill_unconfirmed: 0, refill_overdue: 0 };
+  }
+
+  /** 하루 요약들 (오늘은 실시간 상태, 지난 날은 모의 지난 기록으로 계산). 오늘 뒤 날짜는 없다 */
+  private daySummaries(from: string, to: string): Summary[] {
+    const todayKey = dateKey(new Date());
+    const past = this.pastEvents(from, to);
+    const out: Summary[] = [];
+    for (let key = from; key <= to && key <= todayKey; key = addDays(key, 1)) {
+      if (key === todayKey) {
+        out.push(this.todaySummary());
+        continue;
+      }
+      const ev = past.filter((e) => e.date === key);
+      const byReason = this.emptyReasons();
+      ev.forEach((e) => {
+        if (e.handoff) byReason[e.handoff.reason] += 1;
+        if (e.refill_unconfirmed) byReason.refill_unconfirmed += 1;
+      });
+      const counts = {
+        scheduled: ev.length,
+        taken_ai: ev.filter((e) => e.outcome === 'taken' && e.outcome_source === 'ai').length,
+        taken_guardian: ev.filter((e) => e.outcome === 'taken' && e.outcome_source === 'guardian').length,
+        not_taken: ev.filter((e) => e.outcome === 'not_taken').length,
+        acknowledged: ev.filter((e) => e.outcome === 'acknowledged').length,
+        open_handoffs: 0,
+        pending: 0,
+      };
+      out.push({
         period: 'day',
-        period_start: dateKey(d),
-        period_end: dateKey(d),
+        period_start: key,
+        period_end: key,
         final: true,
-        counts: { scheduled: n, taken_ai: n, taken_guardian: 0, not_taken: 0, acknowledged: 0, open_handoffs: 0, pending: 0 },
-        handoffs_by_reason: reasons(),
-        all_normal: n > 0,
+        counts,
+        handoffs_by_reason: byReason,
+        all_normal: counts.scheduled > 0 && counts.taken_ai === counts.scheduled,
         refill: null,
-        includes_mock: true,
+        includes_mock: counts.scheduled > 0,
         includes_simulated: false,
         pillbox_mismatch: false,
-      };
-    };
+      });
+    }
+    return out;
+  }
+
+  private todaySummary(): Summary {
+    const s = this.s;
     const ev = s.events;
-    const byReason = reasons();
+    const byReason = this.emptyReasons();
     s.handoffs.forEach((h) => (byReason[h.reason] += 1));
     const counts = {
       scheduled: ev.length,
@@ -883,7 +1057,7 @@ class MockApi implements Api {
       open_handoffs: s.handoffs.filter((h) => !h.verdict).length,
       pending: ev.filter((e) => e.state !== 'done' && e.state !== 'handed_off').length,
     };
-    const today: Summary = {
+    return {
       period: 'day',
       period_start: s.eventsDate,
       period_end: s.eventsDate,
@@ -896,30 +1070,34 @@ class MockApi implements Api {
       includes_simulated: ev.some((e) => e.is_simulated),
       pillbox_mismatch: s.mismatch.detected,
     };
-    const days: Summary[] = [];
-    for (let i = 6; i >= 1; i--) days.push(pastDay(new Date(Date.now() - i * 86_400_000)));
-    days.push(today);
-    if (period === 'day') return days;
+  }
 
-    const week = days.slice(6 - mondayIndex(new Date()));
-    const sum = (k: keyof Summary['counts']) => week.reduce((n, d) => n + d.counts[k], 0);
-    return [
-      {
-        ...today,
-        period: 'week',
-        period_start: week[0].period_start,
-        counts: {
-          scheduled: sum('scheduled'),
-          taken_ai: sum('taken_ai'),
-          taken_guardian: sum('taken_guardian'),
-          not_taken: sum('not_taken'),
-          acknowledged: sum('acknowledged'),
-          open_handoffs: sum('open_handoffs'),
-          pending: sum('pending'),
-        },
-        all_normal: week.every((d) => d.all_normal),
+  private sumOf(days: Summary[], period: SummaryPeriod): Summary {
+    const sum = (k: keyof Summary['counts']) => days.reduce((n, d) => n + d.counts[k], 0);
+    const byReason = this.emptyReasons();
+    days.forEach((d) => (Object.keys(byReason) as HandoffReason[]).forEach((r) => (byReason[r] += d.handoffs_by_reason[r] ?? 0)));
+    const last = days[days.length - 1];
+    return {
+      period,
+      period_start: days[0]?.period_start ?? '',
+      period_end: last?.period_end ?? '',
+      final: false,
+      counts: {
+        scheduled: sum('scheduled'),
+        taken_ai: sum('taken_ai'),
+        taken_guardian: sum('taken_guardian'),
+        not_taken: sum('not_taken'),
+        acknowledged: sum('acknowledged'),
+        open_handoffs: sum('open_handoffs'),
+        pending: sum('pending'),
       },
-    ];
+      handoffs_by_reason: byReason,
+      all_normal: days.length > 0 && days.every((d) => d.all_normal || d.counts.scheduled === 0) && days.some((d) => d.all_normal),
+      refill: null,
+      includes_mock: days.some((d) => d.includes_mock),
+      includes_simulated: days.some((d) => d.includes_simulated),
+      pillbox_mismatch: days.some((d) => d.pillbox_mismatch),
+    };
   }
 
   async settings(): Promise<Settings> {

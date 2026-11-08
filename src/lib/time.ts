@@ -56,3 +56,22 @@ export function shortDateOfKey(key: string): string {
   const day = seoulDayOfKey(key);
   return `${day.m + 1}/${day.d} (${WEEKDAY_LABELS[day.weekday]})`;
 }
+
+/** 서울 날짜 "YYYY-MM-DD" 에 n일 더한 날짜 */
+export function addDaysKey(key: string, n: number): string {
+  const d = seoulDayOfKey(key);
+  return seoulDay(new Date(Date.UTC(d.y, d.m, d.d, 3)), n).key;
+}
+
+/** 두 서울 날짜 사이 날 수 (to - from) */
+export function daysBetweenKeys(from: string, to: string): number {
+  const a = seoulDayOfKey(from);
+  const b = seoulDayOfKey(to);
+  return Math.round((Date.UTC(b.y, b.m, b.d) - Date.UTC(a.y, a.m, a.d)) / 86_400_000);
+}
+
+/** "11월 8일 (일)" */
+export function dateLabelOfKey(key: string): string {
+  const day = seoulDayOfKey(key);
+  return `${day.m + 1}월 ${day.d}일 (${WEEKDAY_LABELS[day.weekday]})`;
+}

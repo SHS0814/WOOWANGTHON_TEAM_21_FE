@@ -306,8 +306,20 @@ export interface UploadResponse {
   is_mock: boolean;
 }
 
+/** 3.19 검색 쿼리 (R-051). filter 나 reason 이 있으면 기간 최대 366일, 없으면 31일 */
+export type DoseEventFilter = 'exceptions' | 'handoff' | 'not_taken' | 'taken';
+export interface DoseEventQuery {
+  filter?: DoseEventFilter;
+  reason?: HandoffReason;
+  /** 기본 asc(오래된 순). 기준은 scheduled_at */
+  order?: 'asc' | 'desc';
+}
+
+/** 3.25 period=total 은 전체 기간 합계 한 항목 (R-051) */
+export type SummaryPeriod = 'day' | 'week' | 'total';
+
 export interface Summary {
-  period: 'day' | 'week';
+  period: SummaryPeriod;
   period_start: string;
   period_end: string;
   final: boolean;
