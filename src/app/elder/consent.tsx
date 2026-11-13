@@ -7,6 +7,7 @@ import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
 import { guardianName, useMe } from '@/lib/useMe';
 import { askThenCheckSetup, needsAnySetup } from '@/notify/elderSetup';
+import { fullScreenAvailable } from '@/notify/fullScreen';
 import { reportNotificationStatus } from '@/notify/statusReport';
 import { colors } from '@/theme';
 
@@ -26,7 +27,9 @@ export default function Consent() {
       const needs = await askThenCheckSetup();
       // 권한 창에서 돌아온 직후 상태를 보고한다 (3.29, R-032)
       void reportNotificationStatus();
-      router.replace(needsAnySetup(needs) ? '/elder/alarm-permission' : '/elder');
+      // 화면에 띄울 수 있는 폰이면 먼저 알림 방식을 고른다 (고른 뒤 남은 권한 안내로 넘어간다)
+      if (fullScreenAvailable) router.replace('/elder/ask-mode');
+      else router.replace(needsAnySetup(needs) ? '/elder/alarm-permission' : '/elder');
     } catch {
       setFailed(true);
       setBusy(false);

@@ -55,14 +55,22 @@ npx tsc --noEmit        # 타입 검사
 | 어르신 로컬 알림 (iOS) | 확인 못 함 (iOS 시뮬레이터 없음) | ✓ |
 | iOS 시간 민감 알림 | ✕ (entitlement 는 빌드에만 들어감) | ✓ (Apple 개발자 계정에 Time Sensitive Notifications 기능 필요) |
 | 보호자 원격 푸시 (Android) | ✕ (Android 는 SDK 53 부터 Expo Go 에서 불가) | ✓ `GOOGLE_SERVICES_JSON` 을 주고 빌드해야 한다 (아래 "보호자 푸시"). 없이 만든 빌드는 G8 에 "푸시 설정이 없어 알림을 받을 수 없어요" |
-| 잠금 화면 위 전체 화면 E4 (full-screen intent) | ✕ | 아직 없음. 아래 조사 참고 |
+| 잠금 화면 위 전체 화면 E4 (full-screen intent) | ✕ | 선택 기능 (아래 "화면에 띄우기"). S22 Ultra(Android 16) 개발 빌드에서 시험 알람으로 확인 |
 
-### full-screen intent (조사만, 구현 안 함)
+### 화면에 띄우기 (full-screen intent, 선택 기능)
 
-- `expo-notifications` 에는 full-screen intent API 가 없다
-- 필요한 것: `USE_FULL_SCREEN_INTENT` 권한, 알림에 `setFullScreenIntent(E4 를 여는 PendingIntent)`, E4 를 띄울 Activity 에 `showWhenLocked`·`turnScreenOn`
-- Android 14(API 34)부터 이 권한은 통화·알람 앱 외에는 기본 거부다. 앱이 `NotificationManager.canUseFullScreenIntent()` 로 확인하고, 안 되면 `Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT` 화면으로 보내 보호자가 대신 켜게 해야 한다 (UI 설계 4장의 안내 화면). Google Play 배포 시 권한 사용 신고가 필요하다
-- 방법: ① `@notifee/react-native` (fullScreenAction 지원, 마지막 릴리스 2024-12 라 RN 0.88·New Architecture 호환을 따로 확인해야 함) ② 작은 Expo 네이티브 모듈(Kotlin) + config plugin 으로 직접 구현. 유지보수 위험이 작은 ②를 권한다. 둘 다 개발 빌드가 필요하다
+어르신 폰 연결·동의 직후 보호자가 **"화면에 띄우기 / 알림으로만 받기"** 중에 고른다 (`elder/ask-mode`). 고른 값은 그 폰에만 저장하고(서버·API 변경 없음), 연결을 해제하면 지워져 다시 고른다. 기본 동작(고르지 않았거나 "알림으로만 받기")은 지금까지의 알림 그대로다.
+
+- `expo-notifications` 에는 full-screen intent API 가 없어서 작은 네이티브 모듈을 직접 만들었다: `modules/woowang-fullscreen` (Kotlin, Expo 자동 연결. prebuild 없이 gradle 만 다시 돌리면 들어간다)
+  - `AlarmStore`: 복약 시각마다 `AlarmManager.setAlarmClock` 예약 (정확한 알람 권한이 없으면 `setAndAllowWhileIdle`). 재부팅·앱 업데이트 뒤 다시 건다 (`BootReceiver`)
+  - `DoseAlarmReceiver`: 시각이 되면 채널 `dose-ask-screen` 으로 알림을 내고 `setFullScreenIntent` 로 질문 화면(E4) 딥링크를 연다. 화면이 꺼졌거나 잠겨 있으면 화면이 바로 열리고, 폰을 쓰는 중이면 위쪽 알림으로 보인다 (Android 동작)
+  - `WoowangFullScreenPackage`: 이 알람으로 열린 경우에만 `setShowWhenLocked`·`setTurnScreenOn` 을 켠다. 앱 아이콘이나 보호자 푸시로 연 화면은 잠금 해제 뒤에 보인다
+- 예약은 `src/notify/elderSchedule.ts` 가 같은 목록으로 한다. "화면에 띄우기"이고 권한이 있으면 네이티브 알람만 예약하고 일반 알림은 지운다 (두 번 울리지 않게). 권한이 꺼지면 다음 동기화에서 일반 알림으로 돌아간다 (`src/notify/fullScreen.ts`)
+- Android 14(API 34)부터 `USE_FULL_SCREEN_INTENT` 는 통화·알람 앱 외에는 기본 거부다. 선택 화면이 `canUseFullScreenIntent()` 로 확인하고, 꺼져 있으면 [설정 열기]로 "전체 화면 알림" 설정에 보낸다. Google Play 배포 시 권한 사용 신고가 필요하다
+- 선택 화면에서 "화면에 띄우기"를 고르면 **[15초 뒤 시험하기]** 로 그 폰에서 되는지 바로 볼 수 있다 (시험 알람은 어르신 홈을 연다)
+- 알람으로 띄운 화면은 실제로 앞에 나온 뒤 화면이 꺼지거나 홈으로 나가면 잠금 화면 위 표시를 되돌린다. 되돌리지 않으면 전원 버튼으로 꺼도 화면이 다시 켜지고, 앞에 나오기 전에 되돌리면 화면이 켜지지 않는다 (둘 다 실기기에서 겪음, `WoowangFullScreenPackage.kt`)
+- **확인한 것 (2026-11-13, S22 Ultra·Android 16, 개발 빌드):** 잠금·화면 꺼짐 상태에서 시험 알람이 화면을 켜고 잠금 화면 위로 앱을 띄움 → 어르신 홈 이동, 앱 프로세스를 종료한 상태에서도 같음, 화면을 끄면 다시 잠기고 켜면 잠금 화면이 나옴, "화면에 띄우기"면 네이티브 알람만 21개·"알림으로만 받기"면 기존 알림만 21개. **확인 못 한 것:** 실제 복약 건 알람이 E4 로 가는지(시험 알람은 홈), release APK, 재부팅 뒤 재예약, 다른 제조사·Android 14 이상에서 권한이 꺼진 경우의 설정 안내
+- iOS·웹·Expo Go 에는 이 모듈이 없어 선택 화면이 나오지 않고 알림 방식으로 동작한다
 
 ## 보호자 푸시 (Firebase, R-039)
 

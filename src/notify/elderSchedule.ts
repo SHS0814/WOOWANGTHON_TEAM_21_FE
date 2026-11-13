@@ -3,6 +3,7 @@
 // - 내일부터: GET /schedule + GET /me 의 timing 으로 며칠치를 미리 예약한다 (오프라인 대비)
 // - 사진을 올렸거나 끝난 건(asked·scheduled 가 아닌 건)의 남은 알림은 취소한다
 // 숫자(재질문 간격)는 앱에 두지 않는다. 모두 서버 값이다
+import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 
 import type { DoseEvent, Me, Schedule, TodayResponse } from '@/api';
@@ -10,6 +11,7 @@ import { doseName } from '@/lib/doseLabel';
 import { seoulDay, seoulInstant } from '@/lib/seoulTime';
 import { TIME_OF_DAY_LABELS } from '@/lib/time';
 import { DOSE_CHANNEL, ensurePermission, notificationsSupported } from '@/notify/channels';
+import { clearScreenAlarms, screenModeActive, syncScreenAlarms } from '@/notify/fullScreen';
 import { Notifications } from '@/notify/module';
 
 /** 이 앱이 만든 복약 알림 식별자 접두어. 다른 알림은 건드리지 않는다 */
@@ -147,6 +149,23 @@ async function syncOnce(today: TodayResponse, schedule: Schedule, me: Me) {
     .sort((a, b) => a.at.getTime() - b.at.getTime());
   if (Platform.OS === 'ios') wanted = wanted.slice(0, IOS_PENDING_LIMIT);
 
+  // "화면에 띄우기" 방식이면 같은 건들을 네이티브 알람으로 예약하고, 아래의 일반 알림은 모두 지운다 (두 번 울리지 않게).
+  // 권한이 꺼졌거나 알림 방식이면 반대로 화면 알람을 지우고 일반 알림을 예약한다
+  if (await screenModeActive()) {
+    syncScreenAlarms(
+      wanted.map((p) => ({
+        id: p.id,
+        at: p.at,
+        title: p.title,
+        body: p.body,
+        url: Linking.createURL(p.data.event_id ? `/elder/ask/${p.data.event_id}` : '/elder'),
+      })),
+    );
+    wanted = [];
+  } else {
+    clearScreenAlarms();
+  }
+
   const existing = (await Notifications.getAllScheduledNotificationsAsync()).filter((n) => n.identifier.startsWith(PREFIX));
   const wantedIds = new Set(wanted.map((w) => w.id));
   // 끝난 건·지운 칸·바뀐 일정의 알림 취소 (사진을 올리면 남은 재질문이 여기서 지워진다, R-032 Q-012)
@@ -188,4 +207,5 @@ export async function clearElderNotifications(): Promise<void> {
   const all = await Notifications.getAllScheduledNotificationsAsync();
   await Promise.all(all.filter((n) => n.identifier.startsWith(PREFIX)).map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
   scheduledThisSession.clear();
+  clearScreenAlarms();
 }
