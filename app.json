@@ -43,7 +43,7 @@
       [
         "expo-notifications",
         {
-          "defaultChannel": "guardian",
+          "defaultChannel": "guardian-quiet",
           "color": "#0B4FA8"
         }
       ],

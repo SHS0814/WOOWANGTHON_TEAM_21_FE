@@ -4,23 +4,27 @@ import { Platform } from 'react-native';
 import { Notifications, notificationsSupported } from '@/notify/module';
 
 /** 어르신 복약 질문. 높은 중요도 + 알람음 (Android). full-screen intent 는 개발 빌드 + 네이티브 모듈이 필요해서 이번엔 없다 */
-export const DOSE_CHANNEL = 'dose-ask';
+export const DOSE_CHANNEL = 'dose-ask-quiet';
 /**
  * 보호자 인계·요약 푸시. 서버(FCM, T-BE7)가 android.notification.channel_id 로 이 id 를 보낸다 (R-039).
  * app.json expo-notifications defaultChannel 도 같은 값이라, 서버가 채널을 안 적어도 이 채널로 온다
  */
-export const GUARDIAN_CHANNEL = 'guardian';
+export const GUARDIAN_CHANNEL = 'guardian-quiet';
 
 export { notificationsSupported };
 
 let ready: Promise<void> | null = null;
 
-/** 앱 시작 때 한 번. 앱이 앞에 있을 때도 배너와 소리를 보여준다 */
+/**
+ * 앱 시작 때 한 번. 앱이 앞에 있을 때도 배너를 보여준다.
+ * 알림은 소리 없이 진동과 화면으로만 알린다 (사용자 결정 2026-11-14). Android 는 한 번 만든 채널의 소리를 바꿀 수 없어서
+ * 소리 없는 채널을 새 이름으로 만든다
+ */
 export function setupNotifications(): Promise<void> {
   if (!notificationsSupported) return Promise.resolve();
   ready ??= (async () => {
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
+      handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
     });
     if (Platform.OS === 'android') {
       // Android 13+ 는 권한 요청 전에 채널이 있어야 한다
@@ -28,16 +32,17 @@ export function setupNotifications(): Promise<void> {
         name: '복약 시간',
         description: '약 드실 시간에 어르신께 여쭤봐요',
         importance: Notifications.AndroidImportance.MAX,
-        // sound 을 적지 않으면 기기 기본 알림음. 'default' 라고 쓰면 같은 이름의 파일을 찾다가 실패한다
+        sound: null,
+        enableVibrate: true,
         vibrationPattern: [0, 800, 400, 800],
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        // 알람 볼륨으로 울린다 (무음·진동 모드에서도 알람 볼륨을 따름)
-        audioAttributes: { usage: Notifications.AndroidAudioUsage.ALARM, contentType: Notifications.AndroidAudioContentType.SONIFICATION },
       });
       await Notifications.setNotificationChannelAsync(GUARDIAN_CHANNEL, {
         name: '확인이 필요한 일',
         description: '어르신 약 확인이 필요할 때 알려드려요',
         importance: Notifications.AndroidImportance.HIGH,
+        sound: null,
+        enableVibrate: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
     }

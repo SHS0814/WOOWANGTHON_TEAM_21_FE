@@ -38,9 +38,9 @@ export function reasonDetail(h: Handoff, elder: string): string {
 }
 
 export const VERDICT_LABEL: Record<Verdict, string> = {
-  taken: '✓ 드심',
-  not_taken: '✕ 안 드심',
-  acknowledged: '확인했어요',
+  taken: '정상 복용',
+  not_taken: '미복용',
+  acknowledged: '중복 복용',
   refilled: '네, 채웠어요',
   not_refilled: '아니요',
 };

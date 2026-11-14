@@ -6,8 +6,6 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 
@@ -52,17 +50,14 @@ class DoseAlarmReceiver : BroadcastReceiver() {
       lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
       enableVibration(true)
       vibrationPattern = longArrayOf(0, 800, 400, 800)
-      // 기존 복약 알림 채널과 같이 알람 볼륨으로 울린다
-      setSound(
-        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
-        AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
-      )
+      // 소리 없이 진동과 화면으로만 알린다 (사용자 결정 2026-11-14)
+      setSound(null, null)
     }
     manager.createNotificationChannel(channel)
   }
 
   companion object {
-    const val CHANNEL_ID = "dose-ask-screen"
+    const val CHANNEL_ID = "dose-ask-screen-quiet"
     const val NOTIFICATION_ID = 7301
   }
 }

@@ -7,7 +7,9 @@ import { BaselineReviewScreen } from '@/components/guardian/BaselineReview';
 import { Icon } from '@/components/guardian/Icon';
 import { PillboxGrid } from '@/components/guardian/PillboxGrid';
 import { Section, ErrorText, GButton, GJudgeBadge, GScreen, GText, IconBubble, Notice } from '@/components/guardian/ui';
-import { PillboxCamera } from '@/components/PillboxCamera';
+import { PillboxShot } from '@/components/guardian/PillboxShot';
+import { SetupSteps } from '@/components/guardian/SetupSteps';
+import { useMe } from '@/lib/useMe';
 import { pillboxAspect } from '@/lib/pillboxAspect';
 import { DAILY_MAX_CELLS, dailyCellLabel, pillboxKind, suggestedTimesOfDay, TOD_ORDER } from '@/lib/slots';
 import { TIME_OF_DAY_LABELS } from '@/lib/time';
@@ -64,15 +66,21 @@ export default function PillboxRegister() {
   const [refill, setRefill] = useState<Refill | null>(null);
   const [error, setError] = useState('');
 
+  // 처음 설정(약통이 아직 없음)일 때만 단계 표시를 보인다. 설정에서 다시 등록할 때는 보이지 않는다
+  const { data: me } = useMe();
+  const firstSetup = !!me && !me.family.has_pillbox;
+
   const toSchedule = () => router.replace('/guardian/schedule');
 
   if (step === 'shoot') {
     return (
       <>
-        <Stack.Screen options={{ headerShown: false }} />
-        <PillboxCamera
-          size="guardian"
-          instruction="약을 채운 약통을 찍어주세요"
+        <Stack.Screen options={{ headerShown: true }} />
+        <PillboxShot
+          top={firstSetup ? <SetupSteps current={3} /> : undefined}
+          allowSample
+          title="약을 채운 약통을 찍어주세요"
+          description="사진 한 장으로 AI가 칸 구조를 읽어요. 읽은 결과는 다음 화면에서 확인하고 고칠 수 있어요."
           aspect={pillboxAspect(layout)}
           onCapture={async (photo) => {
             setStep('detecting');

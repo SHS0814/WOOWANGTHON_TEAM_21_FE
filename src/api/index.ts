@@ -17,8 +17,14 @@ function create(): Api {
 
 export const api: Api = create();
 
-/** G1 가족 만들기에서 is_demo=true 로 만들지 (3.2). 서버가 DEMO_MODE 일 때만 받아 준다 */
-export const CREATE_DEMO_FAMILY = process.env.EXPO_PUBLIC_CREATE_DEMO_FAMILY === 'true';
+/**
+ * 시연용 빌드인지 (EXPO_PUBLIC_DEMO_BUILD=true). 배포용 빌드에는 시연 장치가 하나도 보이지 않는다.
+ * 시연용 빌드는 한 폰에서 어르신·보호자를 오가고(연결 건너뛰기), 준비된 샘플 사진으로 바로 해 볼 수 있다
+ */
+export const DEMO_BUILD = process.env.EXPO_PUBLIC_DEMO_BUILD === 'true';
+
+/** G1 가족 만들기에서 is_demo=true 로 만들지 (3.2). 서버가 DEMO_MODE 일 때만 받아 준다. 시연용 빌드는 항상 시연 가족 */
+export const CREATE_DEMO_FAMILY = DEMO_BUILD || process.env.EXPO_PUBLIC_CREATE_DEMO_FAMILY === 'true';
 
 export type { Api } from './client';
 export { ApiError, guardianMessage, isApiError } from './errors';

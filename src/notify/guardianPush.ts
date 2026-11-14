@@ -74,3 +74,24 @@ export function watchPushToken(): () => void {
   });
   return () => sub.remove();
 }
+
+/**
+ * 알림창에 남아 있는 인계 알림 가운데 이미 끝난(판정된) 것을 지운다. 보호자 홈이 열려 있는 인계 목록을 읽을 때마다 부른다.
+ * 다른 보호자가 판정한 건도 이 폰이 목록을 다시 읽으면 지워진다. 요약 알림 같은 다른 알림은 건드리지 않는다.
+ * 알림 내용을 읽을 수 없는 알림(앱이 꺼져 있을 때 시스템이 직접 띄운 것)은 열려 있는 인계가 하나도 없을 때만 지운다
+ */
+export async function clearResolvedHandoffNotifications(openHandoffIds: string[]): Promise<void> {
+  if (!notificationsSupported) return;
+  try {
+    const shown = await Notifications.getPresentedNotificationsAsync();
+    for (const n of shown) {
+      const data = (n.request.content.data ?? {}) as Record<string, unknown>;
+      const type = typeof data.type === 'string' ? data.type : null;
+      const id = typeof data.handoff_id === 'string' ? data.handoff_id : null;
+      const resolved = type === 'handoff' && id ? !openHandoffIds.includes(id) : type === null && openHandoffIds.length === 0;
+      if (resolved) await Notifications.dismissNotificationAsync(n.request.identifier);
+    }
+  } catch (e) {
+    if (__DEV__) console.warn('[push] 끝난 인계 알림을 지우지 못함', String(e));
+  }
+}

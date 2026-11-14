@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 
 import { api, isApiError, type PairRequest } from '@/api';
+import { BackButton, useBackToRole } from '@/components/BackButton';
 import { BigButton } from '@/components/BigButton';
 import { Screen } from '@/components/Screen';
 import { T } from '@/components/Text';
@@ -19,6 +20,7 @@ export default function Connect() {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const pairing = useRef(false);
+  const backToRole = useBackToRole();
   // 키보드가 뜨면 숫자 입력칸과 "숫자로 연결" 버튼이 키보드 위에 보이게 맨 아래로 스크롤한다 (T-FE23, Android 15+)
   const scroll = useRef<ScrollViewInstance>(null);
   const input = useRef<TextInputInstance>(null);
@@ -50,6 +52,7 @@ export default function Connect() {
 
   return (
     <Screen scroll keyboardAware scrollRef={scroll}>
+      <BackButton label="뒤로" color={colors.primary} onPress={backToRole} />
       <T variant="elderTitle">보호자 폰에 뜬 QR을 이 폰으로 찍어주세요</T>
       {permission?.granted ? (
         <View style={styles.scanner}>

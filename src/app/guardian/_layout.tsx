@@ -44,6 +44,7 @@ export default function GuardianLayout() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false, title: '오늘' }} />
       <Stack.Screen name="connect" options={{ title: '어르신 폰 연결' }} />
       <Stack.Screen name="handoff/[id]" options={{ title: '확인할 일' }} />
+      <Stack.Screen name="event/[id]" options={{ title: '복약 기록' }} />
       <Stack.Screen name="pillbox" options={{ title: '약통 등록' }} />
       <Stack.Screen name="schedule" options={{ title: '복약 시각' }} />
       <Stack.Screen name="refill" options={{ title: '약통 채우기' }} />

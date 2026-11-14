@@ -20,7 +20,7 @@ export function keepWords(text: string): string {
 }
 
 /** 글자만으로 된 내용이면 하나의 문자열로 합친다 ("민수" + "님이" 사이에서도 끊기지 않게). 아니면 null */
-function plainText(children: ReactNode): string | null {
+export function plainText(children: ReactNode): string | null {
   const parts = Children.toArray(children);
   if (!parts.length || !parts.every((c) => typeof c === 'string' || typeof c === 'number')) return null;
   return parts.join('');

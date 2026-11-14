@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { api, type LocalPhoto } from '@/api';
+import { api, DEMO_BUILD, type LocalPhoto } from '@/api';
 import { BigButton } from '@/components/BigButton';
 import { DemoPhotoButton, DemoPhotoPicker } from '@/components/DemoPhotoPicker';
 import { useMe } from '@/lib/useMe';
@@ -29,7 +29,8 @@ export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder', 
   const big = size === 'elder';
   // 시연 가족이면 카메라 대신 미리 찍어 둔 약통 사진도 고를 수 있다 (판독은 똑같이 실제 서버가 한다)
   const { data: me } = useMe();
-  const demo = api.mode !== 'mock' && !!me && me.family.is_demo && me.server.demo_mode;
+  // 어르신 화면의 샘플 사진은 시연용 빌드에서만 (배포용 빌드에는 시연 장치를 두지 않는다)
+  const demo = DEMO_BUILD && api.mode !== 'mock' && !!me && me.family.is_demo && me.server.demo_mode;
   const [picking, setPicking] = useState(false);
   const picker = demo ? (
     <DemoPhotoPicker

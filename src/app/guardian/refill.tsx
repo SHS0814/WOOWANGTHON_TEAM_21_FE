@@ -5,7 +5,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { api, guardianMessage, isApiError, type Refill as RefillT } from '@/api';
 import { BaselineReviewScreen } from '@/components/guardian/BaselineReview';
 import { Section, GButton, GScreen, GText, IconBubble, ListGroup, ListRow, MockTag, Notice } from '@/components/guardian/ui';
-import { PillboxCamera } from '@/components/PillboxCamera';
+import { PillboxShot } from '@/components/guardian/PillboxShot';
 import { pillboxAspect } from '@/lib/pillboxAspect';
 import { longDate, spokenHHMM, TIME_OF_DAY_LABELS, WEEKDAY_LABELS } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
@@ -44,12 +44,11 @@ export default function Refill() {
   if (step === 'shoot') {
     return (
       <>
-        <Stack.Screen options={{ headerShown: false }} />
-        <PillboxCamera
-          size="guardian"
-          instruction="채운 약통을 찍어주세요"
+        <Stack.Screen options={{ headerShown: true }} />
+        <PillboxShot
+          title="채운 약통을 찍어주세요"
+          description="약을 다 채운 뒤 약통 전체가 보이게 찍어주세요."
           aspect={pillboxAspect(box.pillbox.layout)}
-          sampleCols={box.pillbox.layout.cols}
           onCapture={async (photo) => {
             setStep('saving');
             setMsg('');

@@ -4,6 +4,7 @@ import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from '
 
 import { api, isApiError, type MockScenario, type Slot } from '@/api';
 import { onPendingScenario, pendingScenario, SCENARIO_LABELS, setPendingScenario } from '@/lib/devScenario';
+import { demoBarHidden, setDemoBarHidden } from '@/lib/demoBar';
 import { goBackOr } from '@/lib/nav';
 import { useRole } from '@/lib/role';
 import { seoulDay } from '@/lib/seoulTime';
@@ -21,6 +22,7 @@ export default function DevPanel() {
   const dev = api.dev;
   const [scenario, setScenario] = useState<MockScenario | null>(pendingScenario());
   const [msg, setMsg] = useState('');
+  const [barHidden, setBarHidden] = useState(demoBarHidden());
   const { data: today } = useApiData(() => api.today().catch(() => null));
   const { data: me } = useMe();
   const { data: schedule } = useApiData(() => api.schedule().catch(() => null));
@@ -155,8 +157,31 @@ export default function DevPanel() {
         </>
       ) : null}
 
+      {/* 시연용 빌드: 위쪽 띠를 숨겨도 여기서 역할을 바꿀 수 있다 */}
+      {api.demo && role ? (
+        <>
+          <Text style={styles.label}>한 폰 시연</Text>
+          <Btn
+            label={role === 'elder' ? '보호자 화면으로' : '어르신 화면으로'}
+            onPress={async () => {
+              const other = role === 'elder' ? 'guardian' : 'elder';
+              if (!(await api.demo?.switchTo(other))) return setMsg('이 폰에 그 역할의 연결이 없어요.');
+              await setRole(other);
+              if (router.canDismiss()) router.dismissAll();
+              router.replace(other === 'elder' ? '/elder' : '/guardian');
+            }}
+          />
+          <Btn
+            label={barHidden ? '위쪽 시연용 띠 보이기' : '위쪽 시연용 띠 숨기기'}
+            onPress={() => {
+              void setDemoBarHidden(!barHidden);
+              setBarHidden(!barHidden);
+            }}
+          />
+        </>
+      ) : null}
       <Btn
-        label={`역할 바꾸기 (지금: ${role === 'elder' ? '어르신' : role === 'guardian' ? '보호자' : '없음'})`}
+        label={api.demo ? '처음 화면으로 (이 폰의 연결 지우기)' : `역할 바꾸기 (지금: ${role === 'elder' ? '어르신' : role === 'guardian' ? '보호자' : '없음'})`}
         onPress={async () => {
           // 실제 서버에서는 이 기기의 토큰을 지운다. 서버의 기기 연결은 G8 에서 해제한다
           if (!dev) await api.forgetToken();

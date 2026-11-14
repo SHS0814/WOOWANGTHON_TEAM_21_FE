@@ -1,10 +1,12 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Brand } from '@/components/guardian/Brand';
 import { Icon, type IconName } from '@/components/guardian/Icon';
-import { GText, IconBubble } from '@/components/guardian/ui';
+import { api, DEMO_BUILD, guardianMessage } from '@/api';
+import { ErrorText, GText, IconBubble } from '@/components/guardian/ui';
 import { useRole } from '@/lib/role';
 import { guardian } from '@/theme';
 
@@ -17,6 +19,23 @@ const C = guardian.color;
 export default function RoleSelect() {
   const { setRole } = useRole();
   const insets = useSafeAreaInsets();
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState('');
+  // 시연용 빌드: 시연 가족을 만들고 이 폰을 보호자·어르신 기기로 모두 연결한 뒤 보호자 화면에서 시작한다
+  const startDemo = async () => {
+    if (!api.demo || starting) return;
+    setStarting(true);
+    setError('');
+    try {
+      await api.demo.start('어머니', '아들');
+      await setRole('guardian');
+      router.replace('/guardian');
+    } catch (e) {
+      setError(guardianMessage(e));
+    } finally {
+      setStarting(false);
+    }
+  };
   return (
     <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
       <View style={styles.top}>
@@ -27,6 +46,17 @@ export default function RoleSelect() {
           <GText variant="title">이 폰을 누가 쓰나요?</GText>
           <GText color={C.sub}>처음 한 번만 골라요. 보통은 보호자가 대신 골라 드려요.</GText>
         </View>
+        {DEMO_BUILD ? (
+          <>
+            <RoleCard
+              icon="smartphone"
+              title={starting ? '시연을 준비하고 있어요…' : '이 폰 하나로 시연하기'}
+              detail="연결을 건너뛰고, 위쪽 띠에서 어르신·보호자 화면을 오가요. 샘플 사진을 쓸 수 있어요."
+              onPress={startDemo}
+            />
+            {error ? <ErrorText>{error}</ErrorText> : null}
+          </>
+        ) : null}
         <RoleCard
           icon="user"
           title="어르신 폰으로 쓰기"

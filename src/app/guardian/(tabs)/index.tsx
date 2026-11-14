@@ -8,6 +8,7 @@ import { Icon } from '@/components/guardian/Icon';
 import { RemotePhoto } from '@/components/RemotePhoto';
 import { Section, GButton, GScreen, GText, IconBubble, ListGroup, ListRow, MockTag, Notice, SectionTitle, StatusChip } from '@/components/guardian/ui';
 import { doseStatus, takenCount } from '@/lib/doseStatus';
+import { clearResolvedHandoffNotifications } from '@/notify/guardianPush';
 import { reasonTitle } from '@/lib/handoff';
 import { doseName } from '@/lib/doseLabel';
 import { dateKey, longDate, spokenTime, TIME_OF_DAY_LABELS, weekdayLong } from '@/lib/time';
@@ -29,6 +30,10 @@ export default function GuardianHome() {
   // 인계는 다른 기기(어르신 폰)나 서버 예약 작업(최대 1분 지연)에서 생기므로 주기적으로 다시 읽는다.
   // 아래 넷은 서버가 아직 구현 중이거나 약통이 없으면 실패할 수 있다 → 실패하면 그 부분만 숨긴다
   const { data: open } = useApiData(() => api.handoffs('open').catch(() => null), [], { pollMs: POLL_MS });
+  // 이미 판정된 인계의 알림이 알림창에 남아 헷갈리지 않게 지운다 (열려 있는 목록을 읽을 때마다)
+  useEffect(() => {
+    if (open) void clearResolvedHandoffNotifications(open.map((h) => h.id));
+  }, [open]);
   const { data: day } = useApiData(() => api.summaries('day', dateKey(new Date()), dateKey(new Date())).catch(() => null), [], { pollMs: POLL_MS });
   const { data: box } = useApiData(() => api.currentPillbox().catch(() => null), [], { pollMs: POLL_MS });
   // R-071: 어르신이 약통을 채우는 집(elder_refill_prompt)이면 약통 채우기는 보호자 할 일이 아니다. 못 읽으면 기본값(false)
@@ -62,7 +67,9 @@ export default function GuardianHome() {
   const next = today?.next_event;
 
   const openEvent = (ev: DoseEvent) =>
-    ev.handoff ? router.push({ pathname: '/guardian/handoff/[id]', params: { id: ev.handoff.id } }) : router.push('/guardian/records');
+    ev.handoff
+      ? router.push({ pathname: '/guardian/handoff/[id]', params: { id: ev.handoff.id } })
+      : router.push({ pathname: '/guardian/event/[id]', params: { id: ev.id, date: ev.date } });
 
   // 확인할 일은 정해진 개수만 보이고 나머지는 펼친다. 작은 폰은 1건 (R-051: 다음 할 일이 항상 보이게)
   const compact = height < 760;
@@ -96,58 +103,18 @@ export default function GuardianHome() {
     .filter((e) => !e.carried_over && e.state !== 'scheduled' && !(e.handoff && !e.handoff.verdict))
     .sort((a, b) => recordAt(a).localeCompare(recordAt(b)));
 
-  // 다음 할 일은 화면 아래에 고정한다 (확인할 일을 펼쳐도 보인다).
-  // 기본은 다음 복약. 약통 남은 칸 행은 보호자가 채우는 집(elder_refill_prompt false)에서 곧 채워야 할 때만 (R-071)
-  const showRefill = me.family.has_pillbox && !settings?.elder_refill_prompt && !!box?.refill_status.needs_refill;
-  // 약통 상태 불일치는 이상 신호라 리필 행 숨김과 관계없이 보인다 (메인 에이전트 결정, T-FE25 검토)
-  const showMismatch = me.family.has_pillbox && !!box?.pillbox_mismatch.detected && !showRefill;
-  const nextRows =
-    next || showRefill || showMismatch ? (
-      <View>
-        {compact ? null : (
-          <GText variant="label" color={C.sub} accessibilityRole="header">
-            다음 할 일
-          </GText>
-        )}
-        <ListGroup style={{ marginTop: 0, borderBottomWidth: 0 }}>
-          {next ? (
-            <ListRow
-              dense
-              icon="clock"
-              title={`다음 복약 · ${TIME_OF_DAY_LABELS[next.time_of_day]}`}
-              subtitle={`${dateKey(new Date(next.scheduled_at)) === dateKey(now) ? '오늘' : longDate(new Date(next.scheduled_at))} ${spokenTime(new Date(next.scheduled_at))}에 여쭤봐요`}
-            />
-          ) : null}
-          {showMismatch ? (
-            <ListRow
-              dense
-              icon="pillbox"
-              iconTone="warn"
-              title="약통 상태가 기록과 달라요"
-              titleColor={C.warn}
-              subtitle="약통 채우기 화면에서 확인해요"
-              accessibilityLabel="약통 상태가 기록과 달라요. 약통 채우기 화면 열기"
-              onPress={() => router.push('/guardian/refill')}
-            />
-          ) : null}
-          {showRefill && box ? (
-            <ListRow
-              dense
-              icon="pillbox"
-              iconTone="warn"
-              title={`약통 남은 칸 ${box.refill_status.remaining_cells}칸`}
-              subtitle={
-                <GText variant="sub" color={C.warn} style={{ fontWeight: '700' }}>
-                  {box.pillbox_mismatch.detected ? '! 곧 채워야 해요. 약통 상태가 기록과 달라요.' : '! 곧 채워야 해요.'}
-                </GText>
-              }
-              accessibilityLabel={`약통 남은 칸 ${box.refill_status.remaining_cells}칸, 곧 채워야 해요. 약통 채우기 화면 열기`}
-              onPress={() => router.push('/guardian/refill')}
-            />
-          ) : null}
-        </ListGroup>
-      </View>
-    ) : undefined;
+  // 화면 아래에는 다음 복약 시각만 둔다. 약통 채우기·약통 상태 불일치 행은 홈에 두지 않는다
+  // (사용자 결정 2026-11-14: 보호자는 멀리 있어 약통을 채울 수 없다). 약통 채우기는 설정 탭에서 들어간다
+  const nextRows = next ? (
+    <ListGroup style={{ marginTop: 0, borderBottomWidth: 0 }}>
+      <ListRow
+        dense
+        icon="clock"
+        title={`다음 복약 · ${TIME_OF_DAY_LABELS[next.time_of_day]}`}
+        subtitle={`${dateKey(new Date(next.scheduled_at)) === dateKey(now) ? '오늘' : longDate(new Date(next.scheduled_at))} ${spokenTime(new Date(next.scheduled_at))}에 여쭤봐요`}
+      />
+    </ListGroup>
+  ) : undefined;
 
   return (
     <GScreen inTabs dense footer={nextRows} onMeasure={onMeasure}>
@@ -275,7 +242,7 @@ export default function GuardianHome() {
                 <Pressable
                   key={ev.id}
                   accessibilityRole="button"
-                  accessibilityLabel={`${doseName(ev)} 약, ${when}, ${st.label}${ev.is_simulated ? ', 시뮬레이션' : ''}. 자세히 보기`}
+                  accessibilityLabel={`${doseName(ev)} 약, ${when}, ${st.label}${ev.reminded_at ? ', 한 번 안내한 뒤' : ''}${ev.is_simulated ? ', 시뮬레이션' : ''}. 자세히 보기`}
                   onPress={() => openEvent(ev)}
                   style={({ pressed }) => [styles.record, pressed && { backgroundColor: C.neutralSoft }]}
                 >
@@ -288,6 +255,8 @@ export default function GuardianHome() {
                     <GText variant="bodyStrong">{doseName(ev)} 약</GText>
                     <GText variant="sub" color={C.sub}>
                       {when}
+                      {/* 처음 사진에서 칸이 그대로여서 한 번 안내한 건은 그 뒤 정상으로 끝나도 표시한다 */}
+                      {ev.reminded_at ? ' · 안내 1회 뒤' : ''}
                       {ev.is_simulated ? ' · 시뮬레이션' : ''}
                     </GText>
                   </View>

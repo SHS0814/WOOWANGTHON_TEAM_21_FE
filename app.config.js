@@ -13,6 +13,13 @@ const VARIANTS = {
     scheme: 'woowang-guardian',
     androidPackage: 'kr.dementiacheck.app.guardian',
   },
+  // 시연용 빌드 (EXPO_PUBLIC_DEMO_BUILD=true 와 함께 쓴다). 배포용과 한 폰에 같이 깔 수 있게 패키지를 달리한다.
+  // Firebase 에 이미 등록된 보호자용 패키지를 쓴다 (새 패키지를 등록하지 않아도 푸시가 된다)
+  demo: {
+    name: '약드셨나요 시연',
+    scheme: 'woowang-demo',
+    androidPackage: 'kr.dementiacheck.app.guardian',
+  },
 };
 
 function applyVariant(config) {

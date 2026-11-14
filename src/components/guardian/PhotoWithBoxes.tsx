@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import type { Reading } from '@/api';
 import { RemotePhoto } from '@/components/RemotePhoto';
+import { keepWords } from '@/components/Text';
 import { attentionMark } from '@/lib/handoff';
 import { guardian } from '@/theme';
 
@@ -34,7 +35,7 @@ export function PhotoWithBoxes({ reading, aspect }: { reading: Reading; aspect: 
           );
         })}
       </View>
-      {flaggedWithoutBox ? <Text style={styles.note}>사진에서 칸 위치를 알 수 없어서 아래 그림에 표시했어요.</Text> : null}
+      {flaggedWithoutBox ? <Text style={styles.note}>{keepWords('사진에서 칸 위치를 알 수 없어서 아래 그림에 표시했어요.')}</Text> : null}
     </View>
   );
 }

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
-import { api, type Role } from '@/api';
+import { api, DEMO_BUILD, type Role } from '@/api';
 import { clearElderNotifications } from '@/notify/elderSchedule';
 import { clearAskMode } from '@/notify/fullScreen';
 
@@ -40,7 +40,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       if (r !== 'elder') {
         void clearElderNotifications().catch(() => {});
         // 알림 방식(알림 / 화면에 띄우기)도 지운다. 다시 연결하면 다시 고른다
-        void clearAskMode();
+        // 시연용 빌드는 한 폰에서 역할을 오가므로 남겨 둔다
+        if (!DEMO_BUILD) void clearAskMode();
       }
       apply(r);
       try {

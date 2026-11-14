@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Alert, BackHandler, Modal, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { api, guardianMessage, type Device, type NotificationStatus, type Settings, type UnchangedMode } from '@/api';
+import { api, DEMO_BUILD, guardianMessage, type Device, type NotificationStatus, type Settings, type UnchangedMode } from '@/api';
 import {
   ErrorText,
   GButton,
@@ -221,7 +221,7 @@ export default function Settings() {
             <ListRow dense icon="link" title="어르신 폰 연결" onPress={() => router.push('/guardian/connect')} />
           ) : null}
         </Group>
-        {me?.family.is_demo && me.server.demo_mode ? (
+        {DEMO_BUILD && me?.family.is_demo && me.server.demo_mode ? (
           <Group title="시연">
             <ListRow
               dense
