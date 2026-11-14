@@ -20,6 +20,8 @@ interface Props {
   onCapture: (photo: LocalPhoto) => void;
   /** 시연용 가족일 때 카메라 대신 샘플 사진을 고를 수 있게 한다 (약통 등록에서만 쓴다) */
   allowSample?: boolean;
+  /** 등록된 약통의 칸 수. 주면 샘플 사진을 같은 약통 것만 보여 준다 (약통 채우기. 다른 약통 사진은 판독이 '애매'로 나온다) */
+  sampleCols?: number;
 }
 
 /**
@@ -27,7 +29,7 @@ interface Props {
  * 다른 보호자 화면과 같은 틀(상단 제목 줄, 흰 바탕, 아래 큰 버튼) 안에 카메라를 둔다.
  * 어르신 촬영(E5)은 전체 화면인 PillboxCamera 를 그대로 쓴다.
  */
-export function PillboxShot({ title, description, top, aspect, onCapture, allowSample }: Props) {
+export function PillboxShot({ title, description, top, aspect, onCapture, allowSample, sampleCols }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const ref = useRef<CameraView>(null);
   const [ready, setReady] = useState(false);
@@ -96,6 +98,7 @@ export function PillboxShot({ title, description, top, aspect, onCapture, allowS
       {demo ? (
         <DemoPhotoPicker
           visible={picking}
+          cols={sampleCols}
           onClose={() => setPicking(false)}
           onPick={(uri) => {
             setPicking(false);

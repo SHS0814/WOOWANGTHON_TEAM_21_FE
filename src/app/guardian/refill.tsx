@@ -49,6 +49,7 @@ export default function Refill() {
           title="채운 약통을 찍어주세요"
           description="약을 다 채운 뒤 약통 전체가 보이게 찍어주세요."
           aspect={pillboxAspect(box.pillbox.layout)}
+          sampleCols={box.pillbox.layout.cols}
           onCapture={async (photo) => {
             setStep('saving');
             setMsg('');

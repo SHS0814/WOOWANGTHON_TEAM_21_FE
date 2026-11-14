@@ -4,7 +4,7 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-import { api } from '@/api';
+import { api, DEMO_BUILD } from '@/api';
 import { ensurePermission, notificationsSupported } from '@/notify/channels';
 import { Notifications } from '@/notify/module';
 
@@ -78,7 +78,8 @@ export function watchPushToken(): () => void {
 /**
  * 알림창에 남아 있는 인계 알림 가운데 이미 끝난(판정된) 것을 지운다. 보호자 홈이 열려 있는 인계 목록을 읽을 때마다 부른다.
  * 다른 보호자가 판정한 건도 이 폰이 목록을 다시 읽으면 지워진다. 요약 알림 같은 다른 알림은 건드리지 않는다.
- * 알림 내용을 읽을 수 없는 알림(앱이 꺼져 있을 때 시스템이 직접 띄운 것)은 열려 있는 인계가 하나도 없을 때만 지운다
+ * 알림 내용을 읽을 수 없는 알림(앱이 꺼져 있을 때 시스템이 직접 띄운 것)은 열려 있는 인계가 하나도 없을 때만 지운다.
+ * 시연용 빌드는 한 폰에 어르신 역할도 있어 '화면에 띄우기' 복약 알림이 같은 모양(내용 없음)으로 떠 있을 수 있으므로 그런 알림은 지우지 않는다
  */
 export async function clearResolvedHandoffNotifications(openHandoffIds: string[]): Promise<void> {
   if (!notificationsSupported) return;
@@ -88,7 +89,7 @@ export async function clearResolvedHandoffNotifications(openHandoffIds: string[]
       const data = (n.request.content.data ?? {}) as Record<string, unknown>;
       const type = typeof data.type === 'string' ? data.type : null;
       const id = typeof data.handoff_id === 'string' ? data.handoff_id : null;
-      const resolved = type === 'handoff' && id ? !openHandoffIds.includes(id) : type === null && openHandoffIds.length === 0;
+      const resolved = type === 'handoff' && id ? !openHandoffIds.includes(id) : type === null && openHandoffIds.length === 0 && !DEMO_BUILD;
       if (resolved) await Notifications.dismissNotificationAsync(n.request.identifier);
     }
   } catch (e) {
