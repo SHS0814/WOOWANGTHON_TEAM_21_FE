@@ -23,22 +23,26 @@ interface Props {
 export function PillboxGrid({ layout, cells, targetCellId }: Props) {
   const byId = new Map(cells?.map((c) => [c.cell_id, c]));
   const hasAttention = !!cells?.some((c) => c.attention);
+  // 한 줄짜리 약통(하루 약통, 요일 약통)은 줄 이름이 뜻이 없다. 빼야 칸이 가운데에 온다
+  const showRowLabels = layout.rows > 1;
   return (
     <View style={{ gap: 10 }}>
       <View style={styles.board}>
         <View style={styles.row}>
-          <View style={styles.rowLabel} />
+          {showRowLabels ? <View style={styles.rowLabel} /> : null}
           {layout.col_labels.map((c, i) => (
-            <Text key={i} style={styles.colLabel}>
+            <Text key={i} style={styles.colLabel} numberOfLines={1}>
               {c}
             </Text>
           ))}
         </View>
         {Array.from({ length: layout.rows }).map((_, r) => (
           <View key={r} style={styles.row}>
-            <View style={styles.rowLabel}>
-              <Text style={styles.rowLabelText}>{layout.row_labels[r]}</Text>
-            </View>
+            {showRowLabels ? (
+              <View style={styles.rowLabel}>
+                <Text style={styles.rowLabelText}>{layout.row_labels[r]}</Text>
+              </View>
+            ) : null}
             {Array.from({ length: layout.cols }).map((__, c) => {
               const cell = layout.cells.find((x) => x.row === r && x.col === c);
               const res = cell ? byId.get(cell.id) : undefined;
@@ -70,23 +74,27 @@ export function PillboxGrid({ layout, cells, targetCellId }: Props) {
         ))}
       </View>
       {cells ? (
-        <Text style={styles.legend}>
-          ○ 빈 칸 · ● 찬 칸 · ? AI가 판단 못 함{targetCellId ? ' · 굵은 테두리 = 이번 칸' : ''}
-          {hasAttention ? ' · 점선 = 확인할 칸 (? 확실하지 않음, ! 기대와 다름)' : ''}
-        </Text>
+        // 범례는 뜻 단위로 줄을 나눈다 (한 줄로 이으면 아무 데서나 끊긴다)
+        <View style={styles.legendBox}>
+          <Text style={styles.legend}>○ 빈 칸　● 찬 칸　? 판단 못 함</Text>
+          {targetCellId ? <Text style={styles.legend}>굵은 테두리: 이번에 드실 칸</Text> : null}
+          {hasAttention ? <Text style={styles.legend}>점선: 확인할 칸 (! 예상과 다름, ? 불확실)</Text> : null}
+        </View>
       ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  board: { backgroundColor: '#F7F9FB', borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 8 },
-  row: { flexDirection: 'row', alignItems: 'stretch' },
+  board: { backgroundColor: '#F7F9FB', borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 10, alignItems: 'center' },
+  // 칸이 적은 약통은 칸이 지나치게 커지지 않게 폭을 제한하고 가운데에 모은다
+  row: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'center', alignSelf: 'stretch' },
   rowLabel: { width: 48, justifyContent: 'center' },
   rowLabelText: { fontSize: 16, fontWeight: '700', color: C.sub },
-  colLabel: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '700', color: C.sub, paddingBottom: 4 },
+  colLabel: { flex: 1, maxWidth: 76, marginHorizontal: 2, textAlign: 'center', fontSize: 16, fontWeight: '700', color: C.sub, paddingBottom: 4 },
   cell: {
     flex: 1,
+    maxWidth: 76,
     aspectRatio: 0.8,
     margin: 2,
     borderWidth: 1,
@@ -102,5 +110,6 @@ const styles = StyleSheet.create({
   symbol: { fontSize: 20, color: C.text, fontWeight: '700' },
   mark: { fontSize: 16, fontWeight: '900', color: C.warn },
   tag: { fontSize: 12, fontWeight: '700', color: C.primaryStrong },
-  legend: { fontSize: 16, color: C.sub, lineHeight: 23 },
+  legendBox: { alignItems: 'center', gap: 2 },
+  legend: { fontSize: 15, color: C.sub, lineHeight: 22, textAlign: 'center' },
 });

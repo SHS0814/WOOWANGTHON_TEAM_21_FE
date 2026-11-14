@@ -2,6 +2,8 @@ import { Stack } from 'expo-router';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { DEMO_BUILD } from '@/api';
+import { DemoBar } from '@/components/DemoBar';
 import { MockBanner } from '@/components/MockBanner';
 import { RoleProvider } from '@/lib/role';
 import { notificationsSupported, setupNotifications } from '@/notify/channels';
@@ -17,6 +19,7 @@ export default function RootLayout() {
         <View style={{ flex: 1, backgroundColor: colors.bg }}>
           {notificationsSupported ? <NotificationRouter /> : null}
           <MockBanner />
+          {DEMO_BUILD ? <DemoBar /> : null}
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
             <Stack.Screen name="dev" options={{ presentation: 'modal' }} />
           </Stack>

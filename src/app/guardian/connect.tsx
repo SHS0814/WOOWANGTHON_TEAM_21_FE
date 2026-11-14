@@ -5,7 +5,9 @@ import QRCode from 'react-native-qrcode-svg';
 
 import { api, CREATE_DEMO_FAMILY, guardianMessage, isApiError, type PairingCode } from '@/api';
 import { MOCK_INVITE_CODE } from '@/api/mock';
+import { BackButton, useBackToRole } from '@/components/BackButton';
 import { BrandMark } from '@/components/guardian/Brand';
+import { SetupSteps } from '@/components/guardian/SetupSteps';
 import { Section, ErrorText, ListGroup, GButton, GField, GScreen, GText, MockTag, Notice, StatusChip } from '@/components/guardian/ui';
 import { isElderShortCode, normalizeInviteCode } from '@/lib/pairCode';
 import { spokenTime } from '@/lib/time';
@@ -25,6 +27,7 @@ const platform = Platform.OS === 'android' || Platform.OS === 'ios' ? Platform.O
  */
 export default function Connect() {
   const { data: hasToken, reload: reloadToken } = useApiData(() => api.hasToken());
+  const backToRole = useBackToRole();
   const [joining, setJoining] = useState(false);
   const [elder, setElder] = useState('');
   const [me, setMe] = useState('');
@@ -67,6 +70,16 @@ export default function Connect() {
     }
   };
 
+  // 연결이 끝나면 홈으로 가고, 약통이 아직 없으면 바로 약통 등록(3단계)을 연다. 뒤로 가면 홈이다
+  const finish = async () => {
+    const hasPillbox = await api
+      .me()
+      .then((m) => m.family.has_pillbox)
+      .catch(() => true);
+    router.replace('/guardian');
+    if (!hasPillbox) router.push('/guardian/pillbox');
+  };
+
   if (hasToken === undefined) return null;
 
   if (joining) return <JoinFamily onBack={() => setJoining(false)} onTokenCleared={reloadToken} />;
@@ -74,8 +87,8 @@ export default function Connect() {
   if (code) {
     const until = new Date(code.expires_at);
     return (
-      <GScreen footer={<GButton label="연결 끝났어요" icon="check" onPress={() => router.replace('/guardian')} />}>
-        <Steps current={2} />
+      <GScreen footer={<GButton label="연결 끝났어요" icon="check" onPress={finish} />}>
+        <SetupSteps current={2} />
         <GText variant="title">어르신 폰에 앱을 설치하고, 이 QR을 어르신 폰으로 찍어주세요</GText>
         <Section style={{ alignItems: 'center' }}>
           <View style={styles.qr} accessible accessibilityLabel="연결용 QR">
@@ -95,7 +108,7 @@ export default function Connect() {
         </Section>
         <GButton variant="ghost" icon="refresh" label="새 코드 받기" onPress={issue} />
         <Notice tone="info" icon="shield">
-          연결되면 어르신 폰에 동의 화면이 나와요.
+          연결되면 어르신 폰에 동의 화면이 나와요. 동의는 어르신 폰에서 하고, 이 폰에서는 다음으로 약통을 등록해요.
         </Notice>
       </GScreen>
     );
@@ -118,20 +131,21 @@ export default function Connect() {
 
   return (
     <GScreen footer={<GButton label="가족 만들기" busy={busy} disabled={!elder.trim() || !me.trim()} onPress={create} />}>
+      {/* 역할을 고른 직후라 돌아갈 화면이 없을 때만 직접 그린다. 설정에서 들어온 경우에는 기본 뒤로 가기가 있다 */}
+      {router.canGoBack() ? null : <Stack.Screen options={{ headerLeft: () => <BackButton onPress={backToRole} /> }} />}
       <View style={{ gap: 12 }}>
         <BrandMark size={52} />
         <GText variant="title">어르신 폰과 연결해요</GText>
         <GText color={C.sub}>보호자 폰에서 가족을 만들고, 어르신 폰으로 QR을 찍으면 연결돼요.</GText>
       </View>
-      <Steps current={1} />
+      <SetupSteps current={1} />
       <Section>
         <GField label="어르신을 뭐라고 부르세요?" value={elder} onChangeText={setElder} placeholder="예: 어머니" />
-        <GField label="어르신 화면에 보일 내 이름" value={me} onChangeText={setMe} placeholder="예: 민수" />
+        <GField label="어르신 화면에 보일 내 이름" value={me} onChangeText={setMe} placeholder="예: 아들" />
         <GText variant="sub" color={C.sub}>
           어르신 화면의 말은 이 호칭으로 나와요. 어르신 호칭은 나중에 설정에서 바꿀 수 있어요.
         </GText>
       </Section>
-      {CREATE_DEMO_FAMILY ? <MockTag label="시연용 가족으로 만들어요 (is_demo)" /> : null}
       {error ? <ErrorText>{error}</ErrorText> : null}
       <ListGroup>
         <Pressable
@@ -153,28 +167,6 @@ export default function Connect() {
         </Pressable>
       </ListGroup>
     </GScreen>
-  );
-}
-
-/** 연결 단계 표시: 1 가족 만들기 → 2 QR 연결 → 3 어르신 동의 */
-function Steps({ current }: { current: 1 | 2 }) {
-  const steps = ['가족 만들기', 'QR로 연결', '어르신 동의'];
-  return (
-    <View style={styles.steps} accessible accessibilityLabel={`3단계 중 ${current}단계: ${steps[current - 1]}`}>
-      {steps.map((label, i) => {
-        const n = i + 1;
-        const done = n < current;
-        const on = n === current;
-        return (
-          <View key={label} style={styles.step}>
-            <View style={[styles.stepDot, (on || done) && { backgroundColor: C.primary, borderColor: C.primary }]}>
-              <Text style={[styles.stepNum, (on || done) && { color: C.onPrimary }]}>{done ? '✓' : n}</Text>
-            </View>
-            <Text style={[styles.stepLabel, on && { color: C.text, fontWeight: '700' }]}>{label}</Text>
-          </View>
-        );
-      })}
-    </View>
   );
 }
 
@@ -222,7 +214,7 @@ function JoinFamily({ onBack, onTokenCleared }: { onBack: () => void; onTokenCle
         </>
       }
     >
-      <Stack.Screen options={{ title: '보호자로 합류' }} />
+      <Stack.Screen options={{ title: '보호자로 합류', headerLeft: () => <BackButton onPress={onBack} /> }} />
       <View style={{ gap: 6 }}>
         <GText variant="title">초대 코드로 가족에 합류해요</GText>
         <GText color={C.sub}>처음 보호자에게 받은 보호자 초대 코드를 넣어 주세요.</GText>
@@ -253,18 +245,4 @@ const styles = StyleSheet.create({
   short: { fontSize: 44, letterSpacing: 8, textAlign: 'center', lineHeight: 54, fontWeight: '800', color: C.text, fontVariant: ['tabular-nums'] },
   joinRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 8, marginHorizontal: -8, minHeight: 64 },
   mockBtn: { minHeight: 48, justifyContent: 'center' },
-  steps: { flexDirection: 'row', gap: 8 },
-  step: { flex: 1, alignItems: 'center', gap: 6 },
-  stepDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: '#C5CEDA',
-    backgroundColor: C.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepNum: { fontSize: 16, fontWeight: '800', color: C.sub },
-  stepLabel: { fontSize: 16, color: C.sub, textAlign: 'center' },
 });

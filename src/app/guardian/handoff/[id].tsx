@@ -2,16 +2,14 @@ import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Linking, View } from 'react-native';
 
-import { api, guardianMessage, isApiError, type Layout, type Reading, type Verdict } from '@/api';
-import { PhotoWithBoxes } from '@/components/guardian/PhotoWithBoxes';
-import { PillboxGrid } from '@/components/guardian/PillboxGrid';
-import { Section, ErrorText, GButton, GJudgeBadge, GScreen, GText, IconBubble, Notice, SectionTitle, StatusChip } from '@/components/guardian/ui';
+import { api, guardianMessage, isApiError, type Verdict } from '@/api';
+import { ReadingView } from '@/components/guardian/ReadingView';
+import { Section, ErrorText, GButton, GScreen, GText, IconBubble, Notice, SectionTitle, StatusChip } from '@/components/guardian/ui';
 import { SimulationTag } from '@/components/MockBanner';
 import { VERDICT_CHIP } from '@/lib/doseStatus';
 import { reasonDetail, reasonTitle, VERDICT_LABEL } from '@/lib/handoff';
 import { doseName } from '@/lib/doseLabel';
 import { goBackOr } from '@/lib/nav';
-import { pillboxAspect } from '@/lib/pillboxAspect';
 import { spokenTime } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
 import { useMe } from '@/lib/useMe';
@@ -110,6 +108,12 @@ export default function HandoffDetail() {
           <StatusChip tone="neutral" icon="bell" label={`${spokenTime(new Date(h.notified_at))} 알림`} />
         </View>
         <GText>{reasonDetail(h, me.family.elder_display_name)}</GText>
+        {/* '중복 복용'으로 판정하면 서버가 미리 비워진 칸의 오늘 남은 건을 닫는다. 판정 전에 알린다 */}
+        {h.reason === 'double_suspected' && !h.verdict ? (
+          <Notice tone="info" icon="info">
+            중복 복용으로 판정하면 미리 비워진 칸의 오늘 약은 건너뛰어요.
+          </Notice>
+        ) : null}
         {h.late_photo ? (
           <Notice tone="info" icon="image">
             알려드린 뒤에 사진이 올라왔어요.
@@ -147,21 +151,3 @@ export default function HandoffDetail() {
 }
 
 const TONE_FG = { ok: C.ok, warn: C.warn, danger: C.danger, neutral: C.neutral, info: C.primaryStrong };
-
-function ReadingView({ reading, layout, title }: { reading: Reading; layout: Layout; title?: string }) {
-  return (
-    <Section>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <View style={{ flex: 1, minWidth: 140 }}>
-          <GText variant="bodyStrong">{title ?? '보내 주신 사진'}</GText>
-          <GText variant="sub" color={C.sub}>
-            {spokenTime(new Date(reading.photo.taken_at))} 촬영
-          </GText>
-        </View>
-        <GJudgeBadge kind="ai" isMock={reading.is_mock} />
-      </View>
-      <PhotoWithBoxes reading={reading} aspect={pillboxAspect(layout)} />
-      <PillboxGrid layout={layout} cells={reading.cells} targetCellId={reading.target_cell_id} />
-    </Section>
-  );
-}

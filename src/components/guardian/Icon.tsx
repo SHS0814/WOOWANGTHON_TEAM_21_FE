@@ -28,6 +28,7 @@ export type IconName =
   | 'chevronDown'
   | 'chevronUp'
   | 'chevronLeft'
+  | 'arrowLeft'
   | 'trash'
   | 'bell'
   | 'user'
@@ -123,6 +124,12 @@ const SHAPES: Record<IconName, React.ReactNode> = {
   ),
   chevronRight: P('M9 5l7 7-7 7'),
   chevronLeft: P('M15 5l-7 7 7 7'),
+  arrowLeft: (
+    <>
+      {P('M19 12H5')}
+      {P('m12 19-7-7 7-7')}
+    </>
+  ),
   chevronDown: P('M5 9l7 7 7-7'),
   chevronUp: P('M5 15l7-7 7 7'),
   trash: P('M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'),

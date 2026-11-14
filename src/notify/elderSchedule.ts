@@ -185,7 +185,7 @@ async function syncOnce(today: TodayResponse, schedule: Schedule, me: Me) {
         title: p.title,
         body: p.body,
         data: p.data,
-        sound: 'default',
+        sound: false,
         // iOS: 집중 모드에서도 보이는 시간 민감 알림 (entitlement 필요, README 참고)
         interruptionLevel: 'timeSensitive',
         priority: Notifications.AndroidNotificationPriority.MAX,

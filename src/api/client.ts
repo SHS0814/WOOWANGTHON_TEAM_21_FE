@@ -97,4 +97,16 @@ export interface Api {
   setMockScenario(scenario: MockScenario | null): Promise<MockScenarioResponse>;
 
   readonly dev?: MockDevTools;
+  /** 시연용 빌드에서만 있다 */
+  readonly demo?: DemoTools;
+}
+
+/** 시연용 빌드: 한 폰에서 어르신·보호자를 오간다 (실제 서버에 기기 두 개로 등록된다) */
+export interface DemoTools {
+  /** 시연 가족을 만들고, 이 폰을 보호자 기기와 어르신 기기로 모두 연결한다 (QR 연결을 건너뛴다). 보호자 쪽이 켜진 채로 끝난다 */
+  start(elderName: string, guardianName: string): Promise<void>;
+  /** 두 역할의 토큰이 모두 있는지 */
+  ready(): Promise<boolean>;
+  /** 쓰는 쪽을 바꾼다. 그 역할의 토큰이 없으면 false */
+  switchTo(role: 'elder' | 'guardian'): Promise<boolean>;
 }

@@ -122,8 +122,8 @@ function Stats({ today, onPick }: { today: string; onPick: (key: string) => void
           </View>
           <View style={styles.statRow}>
             <StatItem label="AI 확인" value={c.taken_ai} />
-            <StatItem label="판정 드심" value={c.taken_guardian} />
-            <StatItem label="안 드심" value={c.not_taken} tone={c.not_taken ? C.danger : undefined} />
+            <StatItem label="판정 정상" value={c.taken_guardian} />
+            <StatItem label="미복용" value={c.not_taken} tone={c.not_taken ? C.warn : undefined} />
             <StatItem label="인계" value={handoffs} unit="건" tone={handoffs ? C.warn : undefined} />
           </View>
           {reasons.length ? (

@@ -6,7 +6,7 @@ import { api, type DoseEvent, type DoseEventFilter, type HandoffReason } from '@
 import { DatePickerSheet } from '@/components/guardian/DatePicker';
 import { Icon, type IconName } from '@/components/guardian/Icon';
 import { ChoiceChips, ErrorText, GButton, GScreen, GText, ListGroup, MockTag, Section, TONE } from '@/components/guardian/ui';
-import { doseStatus } from '@/lib/doseStatus';
+import { doseStatus, isSkippedByDouble } from '@/lib/doseStatus';
 import { REASON_TITLE, reasonTitle } from '@/lib/handoff';
 import { addDaysKey, dateKey, dateLabelOfKey, daysBetweenKeys, shortDateOfKey, spokenTime, TIME_OF_DAY_LABELS } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
@@ -34,7 +34,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: '전체' },
   { key: 'exceptions', label: '특이사항 모두' },
   { key: 'handoff', label: '인계 있었음' },
-  { key: 'not_taken', label: '안 드심' },
+  { key: 'not_taken', label: '미복용' },
   { key: 'reason', label: '사유별' },
 ];
 const REASONS = Object.keys(REASON_TITLE) as HandoffReason[];
@@ -373,7 +373,6 @@ const reasonShort = (r: string) => REASON_SHORT[r as HandoffReason] ?? '확인 �
 function shortStatus(ev: DoseEvent): { tone: GuardianTone; label: string; icon: IconName } {
   const st = doseStatus(ev);
   if (ev.handoff && !ev.outcome) return { tone: 'danger', label: '확인 필요', icon: 'alert' };
-  if (ev.outcome === 'acknowledged') return { ...st, label: '확인함' };
   return st;
 }
 
@@ -409,6 +408,8 @@ function EventRow({ ev, search, today, first, last }: { ev: DoseEvent; search: S
   const line2: ReactNode[] = [];
   if (recorded) line2.push(`${hhmm(recorded)} 기록`);
   if (judgeShort) line2.push(judgeShort);
+  // 처음 사진에서 칸이 그대로여서 '약 드실 시간이에요'라고 한 번 안내한 건 (그 뒤 정상으로 끝났어도 남긴다)
+  if (ev.reminded_at) line2.push('안내 1회');
   for (const r of new Set([reason, extraReason].filter((x): x is string => !!x))) {
     line2.push(
       <Text key={r} style={{ color: C.warn, fontWeight: '700' }}>
@@ -416,6 +417,7 @@ function EventRow({ ev, search, today, first, last }: { ev: DoseEvent; search: S
       </Text>,
     );
   }
+  if (isSkippedByDouble(ev)) line2.splice(0, line2.length, '중복 복용으로 건너뜀');
   if (!line2.length) line2.push(ev.state === 'scheduled' ? '아직 복약 시각 전' : ev.outcome === 'not_taken' ? '기록 없음' : '기다리는 중');
 
   const a11y = [
@@ -423,6 +425,7 @@ function EventRow({ ev, search, today, first, last }: { ev: DoseEvent; search: S
     doseStatus(ev).label,
     recorded ? `${spokenTime(new Date(recorded))} 기록` : null,
     judgeFull,
+    ev.reminded_at ? `${spokenTime(new Date(ev.reminded_at))}에 한 번 안내함` : null,
     reason ? reasonTitle(reason) : null,
     extraReason ? reasonTitle(extraReason) : null,
     mock ? '모의 결과, 실제 AI 아님' : null,
@@ -464,21 +467,20 @@ function EventRow({ ev, search, today, first, last }: { ev: DoseEvent; search: S
           ) : null}
         </View>
       </View>
-      {ev.handoff ? <Icon name="chevronRight" size={20} color={C.muted} /> : null}
+      <Icon name="chevronRight" size={20} color={C.muted} />
     </>
   );
   const style = [styles.row, !first && { paddingTop: 2 }, !last && { paddingBottom: 4 }, last && styles.rowLine];
-  if (!ev.handoff)
-    return (
-      <View style={style} accessible accessibilityLabel={a11y}>
-        {body}
-      </View>
-    );
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${a11y}. 인계 자세히 보기`}
-      onPress={() => router.push({ pathname: '/guardian/handoff/[id]', params: { id: ev.handoff!.id } })}
+      accessibilityLabel={`${a11y}. ${ev.handoff ? '인계 자세히 보기' : '사진과 판독 보기'}`}
+      // 인계된 건은 판정까지 하는 인계 상세로, 그 밖의 건(정상 기록 등)은 보기 전용 기록 상세로 간다
+      onPress={() =>
+        ev.handoff
+          ? router.push({ pathname: '/guardian/handoff/[id]', params: { id: ev.handoff.id } })
+          : router.push({ pathname: '/guardian/event/[id]', params: { id: ev.id, date: ev.date } })
+      }
       style={({ pressed }) => [...style, pressed && { backgroundColor: C.neutralSoft }]}
     >
       {body}

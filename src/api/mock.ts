@@ -58,13 +58,14 @@ const CARRY_OVER_HOURS = 6;
 const TIMING = { reask_offsets_min: [10, 20], no_response_handoff_min: 30, retake_wait_min: 15 };
 
 // backend.md 7.2
+const DOSE_VERDICTS: Verdict[] = ['taken', 'acknowledged', 'not_taken'];
 const ALLOWED_VERDICTS: Record<HandoffReason, Verdict[]> = {
-  no_response: ['taken', 'not_taken', 'acknowledged'],
-  unclear: ['taken', 'not_taken'],
-  unchanged: ['taken', 'not_taken', 'acknowledged'],
-  double_suspected: ['taken', 'not_taken', 'acknowledged'],
+  no_response: DOSE_VERDICTS,
+  unclear: DOSE_VERDICTS,
+  unchanged: DOSE_VERDICTS,
+  double_suspected: DOSE_VERDICTS,
   refill_unconfirmed: ['refilled', 'not_refilled'],
-  refill_overdue: ['taken', 'not_taken', 'acknowledged'],
+  refill_overdue: DOSE_VERDICTS,
 };
 
 interface StoredHandoff {

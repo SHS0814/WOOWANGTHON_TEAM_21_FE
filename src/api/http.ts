@@ -2,9 +2,9 @@
 import { File } from 'expo-file-system';
 import { Platform as RNPlatform } from 'react-native';
 
-import type { Api } from './client';
+import type { Api, DemoTools } from './client';
 import { ApiError } from './errors';
-import { clearToken, loadToken, saveToken } from './tokenStore';
+import { clearRoleTokens, clearToken, loadRoleToken, loadToken, saveRoleToken, saveToken } from './tokenStore';
 import type {
   ConsentRequest,
   CreateFamilyRequest,
@@ -93,7 +93,38 @@ class HttpApi implements Api {
   async forgetToken() {
     this.token = null;
     await clearToken();
+    if (this.demo) await clearRoleTokens();
   }
+
+  /** 시연용 빌드에서만 (index.ts DEMO_BUILD). 한 폰이 보호자 기기와 어르신 기기를 겸한다 */
+  readonly demo: DemoTools | undefined =
+    process.env.EXPO_PUBLIC_DEMO_BUILD === 'true'
+      ? {
+          start: async (elderName, guardianName) => {
+            const platform = RNPlatform.OS === 'android' || RNPlatform.OS === 'ios' ? RNPlatform.OS : null;
+            const fam = await this.request<CreateFamilyResponse>('/families', {
+              method: 'POST',
+              body: { elder_display_name: elderName, guardian_display_name: guardianName, platform, is_demo: true },
+              auth: false,
+            });
+            await saveRoleToken('guardian', fam.token);
+            await this.setToken(fam.token);
+            // 보호자로 어르신 연결 코드를 받아, 같은 폰이 어르신 기기로도 연결한다. 어르신 동의는 건너뛰지 않는다 (어르신 화면에서 한다)
+            const code = await this.request<PairingCode>('/pairing-codes', { method: 'POST', body: { kind: 'elder' } });
+            const paired = await this.request<PairResponse>('/pair', { method: 'POST', body: { code: code.code, platform }, auth: false });
+            await saveRoleToken('elder', paired.token);
+            this.changed();
+          },
+          ready: async () => !!(await loadRoleToken('guardian')) && !!(await loadRoleToken('elder')),
+          switchTo: async (role) => {
+            const token = await loadRoleToken(role);
+            if (!token) return false;
+            await this.setToken(token);
+            this.changed();
+            return true;
+          },
+        }
+      : undefined;
 
   private async request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     const { method = 'GET', body, form, auth = true, timeoutMs = DEFAULT_TIMEOUT_MS } = opts;

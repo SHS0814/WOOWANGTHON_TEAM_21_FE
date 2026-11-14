@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/guardian/Icon';
 import { useKeyboardOverlap } from '@/lib/keyboard';
+import { keepWords, plainText } from '@/components/Text';
 import { guardian, type GuardianTone } from '@/theme';
 
 const C = guardian.color;
@@ -27,8 +28,15 @@ const C = guardian.color;
 
 type TypeName = keyof typeof guardian.type;
 
-export function GText({ variant = 'body', color, style, ...rest }: TextProps & { variant?: TypeName; color?: string }) {
-  return <Text {...rest} style={[guardian.type[variant] as TextStyle, { color: color ?? C.text }, style]} />;
+export function GText({ variant = 'body', color, style, children, ...rest }: TextProps & { variant?: TypeName; color?: string }) {
+  // 한글은 글자 사이 어디서나 줄이 바뀌어 "확인해 주세 / 요"처럼 끊긴다. 글자만으로 된 내용은 띄어쓰기에서만 줄이 바뀌게 한다
+  const text = plainText(children);
+  return (
+    // 화면 읽기 기능에는 원래 글자를 준다
+    <Text accessibilityLabel={text ?? undefined} {...rest} style={[guardian.type[variant] as TextStyle, { color: color ?? C.text }, style]}>
+      {text === null ? children : keepWords(text)}
+    </Text>
+  );
 }
 
 // ── 화면 틀 ───────────────────────────────────────────
