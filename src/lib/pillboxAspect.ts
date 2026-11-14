@@ -6,6 +6,16 @@ export function pillboxAspect(layout: Layout | null | undefined): number {
   return Math.min(3, Math.max(0.8, (layout.cols * 0.8) / layout.rows));
 }
 
+/** 일정의 칸 id 로 짐작한 열 수 (못 구하면 undefined) */
+export function colsFromCellIds(cellIds: string[]): number | undefined {
+  let cols = 0;
+  for (const id of cellIds) {
+    const m = /^r(\d+)c(\d+)$/.exec(id);
+    if (m) cols = Math.max(cols, Number(m[2]) + 1);
+  }
+  return cols || undefined;
+}
+
 /** 어르신 폰은 약통 구조(보호자 API)를 못 받으므로, 일정의 칸 id "r{행}c{열}" 로 행·열 수를 짐작한다 (1.4) */
 export function aspectFromCellIds(cellIds: string[]): number {
   let rows = 0;

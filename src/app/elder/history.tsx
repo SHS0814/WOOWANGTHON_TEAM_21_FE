@@ -55,7 +55,7 @@ function Row({ ev }: { ev: DoseEvent }) {
   if (canSendLatePhoto(ev)) {
     return (
       <View style={styles.row}>
-        <T variant="elderTitle">– {tod}</T>
+        <T variant="elderTitle">{tod}</T>
         <T variant="elderBody">아직 기록이 없어요</T>
         <T variant="elderBody">드셨으면 약통 사진을 찍어 주세요.</T>
         <BigButton
@@ -68,7 +68,7 @@ function Row({ ev }: { ev: DoseEvent }) {
   }
   return (
     <View style={styles.row} accessible accessibilityLabel={`${tod}, 아직 기록이 없어요`}>
-      <T variant="elderTitle">– {tod}</T>
+      <T variant="elderTitle">{tod}</T>
       <T variant="elderBody">{ev.elder_status === 'upcoming' ? `${spokenHHMM(ev.slot.dose_time)} 예정` : '아직 기록이 없어요'}</T>
     </View>
   );

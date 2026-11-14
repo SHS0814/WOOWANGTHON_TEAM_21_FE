@@ -132,9 +132,16 @@ export default function HandoffDetail() {
         </Section>
       )}
 
-      <Notice tone="info" icon="info" title="칸이 빈 것만 확인했어요.">
-        드셨는지는 직접 확인해 주세요.
-      </Notice>
+      {readings.length ? (
+        <Notice tone="info" icon="info" title="칸이 빈 것만 확인했어요.">
+          드셨는지는 직접 확인해 주세요.
+        </Notice>
+      ) : (
+        // 사진이 없는 건(무응답 등)은 확인한 것이 없으므로 "칸이 빈 것만 확인했어요"라고 하지 않는다
+        <Notice tone="info" icon="info" title="사진이 없어 확인한 것이 없어요.">
+          드셨는지는 직접 확인해 주세요.
+        </Notice>
+      )}
     </GScreen>
   );
 }

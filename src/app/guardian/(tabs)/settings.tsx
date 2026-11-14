@@ -221,6 +221,17 @@ export default function Settings() {
             <ListRow dense icon="link" title="어르신 폰 연결" onPress={() => router.push('/guardian/connect')} />
           ) : null}
         </Group>
+        {me?.family.is_demo && me.server.demo_mode ? (
+          <Group title="시연">
+            <ListRow
+              dense
+              icon="clock"
+              title="시연 도구"
+              subtitle="지금 약 시간 시뮬레이션 (시연용 가족에서만 보여요)"
+              onPress={() => router.push('/dev')}
+            />
+          </Group>
+        ) : null}
         {msg ? <ErrorText>{msg}</ErrorText> : null}
 
         <ChoiceSheet

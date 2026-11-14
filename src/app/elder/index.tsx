@@ -1,5 +1,6 @@
 import { Redirect, router } from 'expo-router';
-import { View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { BackHandler, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { api } from '@/api';
 import { BigButton } from '@/components/BigButton';
@@ -23,6 +24,13 @@ export default function ElderHome() {
   // 동의 전에는 today 가 403 consent_required 라서 결과를 무시한다
   const { data: today } = useApiData(() => api.today().catch(() => null), [], { pollMs: POLL_MS });
 
+  // 지금 시각. 분이 바뀌면 다시 그린다
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 10_000);
+    return () => clearInterval(t);
+  }, []);
+
   if (hasToken === undefined) return null;
   if (!hasToken) return <Redirect href="/elder/connect" />;
   if (!me) return null;
@@ -39,7 +47,7 @@ export default function ElderHome() {
     );
   }
 
-  const now = new Date();
+  const demo = me.family.is_demo && me.server.demo_mode;
   // 3.17 next_event: 아직 scheduled 또는 asked 인 가장 이른 건. 전날 건(carried_over)이면 "다음 약"이 아니므로
   // 오늘 건 중에서 다시 고른다 (R-021 Q-007)
   const items = today?.items ?? [];
@@ -53,15 +61,45 @@ export default function ElderHome() {
   const late = items.filter((e) => canSendLatePhoto(e));
 
   return (
-    <Screen center footer={<BigButton label="나 약 먹었나?" onPress={() => router.push('/elder/history')} />}>
-      <View style={{ alignItems: 'center', gap: 8 }}>
+    <Screen
+      center
+      // 나가기: 앱을 닫고 폰 화면으로 돌아간다 (약 시간 알림은 그대로 울린다). 주 버튼(파랑)과 색으로 구분한다.
+      // 앱을 스스로 닫을 수 있는 Android 에서만 보인다. 약 시간 질문 화면에는 두지 않는다
+      header={
+        Platform.OS === 'android' ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="나가기"
+            accessibilityHint="앱을 닫아요. 약 시간이 되면 다시 알려드려요"
+            onPress={() => BackHandler.exitApp()}
+            style={({ pressed }) => [styles.exit, pressed && { opacity: 0.7 }]}
+          >
+            <T variant="elderBody" style={styles.exitText}>
+              ✕ 나가기
+            </T>
+          </Pressable>
+        ) : null
+      }
+      footer={<BigButton label="나 약 먹었나?" onPress={() => router.push('/elder/history')} />}
+    >
+      {/* 시연 가족이면 날짜를 길게 눌러 시연 도구를 연다 (맨 위 띠를 없앤 대신). 보통 가족에서는 아무 일도 없다 */}
+      <Pressable
+        accessible={false}
+        disabled={!demo}
+        delayLongPress={800}
+        onLongPress={() => router.push('/dev')}
+        style={{ alignItems: 'center', gap: 8 }}
+      >
         <T variant="elderHuge" style={{ textAlign: 'center' }}>
           {longDate(now)}
         </T>
         <T variant="elderHuge" style={{ textAlign: 'center' }}>
           {weekdayLong(now)}
         </T>
-      </View>
+        <T variant="elderTitle" style={{ textAlign: 'center' }} accessibilityLabel={`지금 ${spokenTime(now)}`}>
+          {spokenTime(now)}
+        </T>
+      </Pressable>
       <View style={{ borderTopWidth: 2, borderColor: colors.border, paddingTop: 20, alignItems: 'center' }}>
         {next ? (
           <T variant="elderTitle" style={{ textAlign: 'center' }}>
@@ -88,3 +126,17 @@ export default function ElderHome() {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  exit: {
+    alignSelf: 'flex-end',
+    minHeight: 60,
+    paddingHorizontal: 20,
+    borderRadius: 30,
+    // 빨강: 흰 글자와 대비 6.5:1
+    backgroundColor: '#B3261E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exitText: { color: '#FFFFFF', fontWeight: '700' },
+});
