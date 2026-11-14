@@ -88,6 +88,11 @@ export interface Api {
   /** 3.26 */ settings(): Promise<Settings>;
   /** 3.26 */ putSettings(patch: Partial<Settings>): Promise<Settings>;
   /** 3.27 시연 트리거. 데모 가족이 아니면 ApiError(404, not_found) */ simulateDose(slotId: string): Promise<DoseEvent>;
+  /**
+   * 시연 초기화 (POST /dev/reset). 이 데모 가족의 복약 기록·인계·복약 사진을 모두 지워 시연을 처음부터 다시 할 수 있게 한다.
+   * 연결·약통·일정·설정은 남는다. 데모 가족이 아니면 ApiError(404, not_found)
+   */
+  resetDemo(): Promise<void>;
   /** 3.28 다음 복약 사진 1장의 모의 판독 결과. 데모 가족·mock 판독기가 아니면 ApiError(404, not_found) */
   setMockScenario(scenario: MockScenario | null): Promise<MockScenarioResponse>;
 

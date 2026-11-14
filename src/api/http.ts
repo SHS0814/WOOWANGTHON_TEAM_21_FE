@@ -279,6 +279,12 @@ class HttpApi implements Api {
     return this.request<DoseEvent>('/dev/dose-events', { method: 'POST', body: { slot_id: slotId } });
   }
 
+  async resetDemo() {
+    await this.request<void>('/dev/reset', { method: 'POST' });
+    // 204 응답은 request 가 변경 알림을 보내지 않는다. 화면들이 다시 읽게 직접 알린다
+    this.changed();
+  }
+
   setMockScenario(scenario: MockScenario | null) {
     return this.request<MockScenarioResponse>('/dev/mock-scenario', { method: 'POST', body: { scenario } });
   }

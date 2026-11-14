@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { api, isApiError, type MockScenario, type Slot } from '@/api';
 import { onPendingScenario, pendingScenario, SCENARIO_LABELS, setPendingScenario } from '@/lib/devScenario';
@@ -56,6 +56,23 @@ export default function DevPanel() {
   // 서버가 시연용으로 만들어 준다 (3.27). 이미 진행된 건(오늘 건이 있고 예정 상태가 아님)만 뺀다
   const weekday = seoulDay(new Date()).weekday;
   const started = new Set((today?.items ?? []).filter((e) => !e.carried_over && e.state !== 'scheduled').map((e) => e.slot.id));
+  const reset = async () => {
+    try {
+      await api.resetDemo();
+      setMsg('기록을 모두 지웠어요. 처음부터 다시 시연할 수 있어요.');
+    } catch (e) {
+      setMsg(isApiError(e, 'not_found') ? '시연 가족이 아니에요.' : '초기화하지 못했어요. 잠시 뒤에 다시 해 주세요.');
+    }
+  };
+  // 실수로 누르지 않게 한 번 더 묻는다 (웹에는 Alert 버튼이 없어 바로 실행한다)
+  const confirmReset = () => {
+    if (Platform.OS === 'web') return void reset();
+    Alert.alert('시연 초기화', '이 시연 가족의 복약 기록을 모두 지울까요? 되돌릴 수 없어요.', [
+      { text: '취소', style: 'cancel' },
+      { text: '지우기', style: 'destructive', onPress: () => void reset() },
+    ]);
+  };
+
   const scheduled = (schedule?.slots ?? [])
     .filter((s) => s.weekday === weekday && !started.has(s.id))
     .sort((a, b) => a.dose_time.localeCompare(b.dose_time));
@@ -98,6 +115,17 @@ export default function DevPanel() {
       ) : (
         <Text style={styles.msg}>{today === null ? '오늘 일정을 읽지 못했어요.' : '오늘 아직 시작하지 않은 약 시간이 없어요.'}</Text>
       )}
+
+      {/* 실제 서버의 시연 가족: 시연을 처음부터 다시 할 수 있게 기록을 지운다 */}
+      {!dev ? (
+        <>
+          <Text style={styles.label}>다시 시연하기</Text>
+          <Text style={styles.note}>
+            이 시연 가족의 복약 기록·확인할 일·복약 사진을 모두 지워요. 연결, 약통, 복약 시각은 그대로예요. 약통은 마지막으로 등록하거나 채운 상태로 돌아가요.
+          </Text>
+          <Btn label="시연 초기화 (기록 모두 지우기)" onPress={confirmReset} />
+        </>
+      ) : null}
 
       {dev ? (
         <>

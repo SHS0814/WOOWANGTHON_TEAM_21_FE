@@ -1164,6 +1164,10 @@ class MockApi implements Api {
     return this.settings();
   }
 
+  async resetDemo() {
+    await this.dev.resetToday();
+  }
+
   async simulateDose(slotId: string) {
     const { s } = await this.auth();
     const slot = s.slots.find((x) => x.id === slotId);
