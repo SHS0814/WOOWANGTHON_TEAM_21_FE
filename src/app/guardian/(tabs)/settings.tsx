@@ -390,9 +390,9 @@ function ElderNotificationStatus({ status }: { status: NotificationStatus | null
     <View style={{ marginTop: 6 }}>
       <Notice tone="warn" title="어르신 폰 알림 설정이 꺼져 있어 알림이 늦을 수 있어요">
         <View style={{ gap: 4 }}>
-          {!status.notifications_allowed ? <GText variant="sub">• 알림이 꺼져 있어요. 어르신 폰 설정 → 앱 → 약 챙김 → 알림을 허용해 주세요.</GText> : null}
+          {!status.notifications_allowed ? <GText variant="sub">• 알림이 꺼져 있어요. 어르신 폰 설정 → 앱 → 약, 드셨나요? → 알림을 허용해 주세요.</GText> : null}
           {status.exact_alarm_allowed === false ? (
-            <GText variant="sub">• "알람 및 리마인더"가 꺼져 있어요. 어르신 폰 설정 → 앱 → 약 챙김 → 알람 및 리마인더를 켜 주세요.</GText>
+            <GText variant="sub">• "알람 및 리마인더"가 꺼져 있어요. 어르신 폰 설정 → 앱 → 약, 드셨나요? → 알람 및 리마인더를 켜 주세요.</GText>
           ) : null}
           <GText variant="sub" color={C.sub}>
             {spokenTime(new Date(status.reported_at))}에 어르신 폰에서 알려온 상태예요.

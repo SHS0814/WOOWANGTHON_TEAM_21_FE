@@ -9,7 +9,7 @@ const path = require('path');
 
 const VARIANTS = {
   guardian: {
-    name: '약 챙김 보호자',
+    name: '약드셨나요 보호자',
     scheme: 'woowang-guardian',
     androidPackage: 'kr.dementiacheck.app.guardian',
   },

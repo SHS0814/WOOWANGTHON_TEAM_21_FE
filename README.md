@@ -188,7 +188,7 @@ adb install -r android/app/build/outputs/apk/release/app-release.apk
 | | 기본 | `APP_VARIANT=guardian` |
 |---|---|---|
 | Android 패키지 | `kr.dementiacheck.app` | `kr.dementiacheck.app.guardian` |
-| 앱 이름 | 약 챙김 | 약 챙김 보호자 |
+| 앱 이름 | 약, 드셨나요? | 약드셨나요 보호자 |
 | 딥링크 scheme | `woowang` | `woowang-guardian` |
 
 - `google-services.json` 하나에 두 패키지가 모두 있어야 한다. 빌드하는 패키지가 없으면 설정 단계에서 멈춘다. 서버는 같은 Firebase 프로젝트의 서비스 계정으로 두 앱에 보내므로 서버 설정은 그대로다
