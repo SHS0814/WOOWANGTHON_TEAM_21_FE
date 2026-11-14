@@ -5,8 +5,9 @@ import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { api, type DoseEvent } from '@/api';
 import { DayTimeline } from '@/components/guardian/DayTimeline';
 import { Icon } from '@/components/guardian/Icon';
+import { RemotePhoto } from '@/components/RemotePhoto';
 import { Section, GButton, GScreen, GText, IconBubble, ListGroup, ListRow, MockTag, Notice, SectionTitle, StatusChip } from '@/components/guardian/ui';
-import { takenCount } from '@/lib/doseStatus';
+import { doseStatus, takenCount } from '@/lib/doseStatus';
 import { reasonTitle } from '@/lib/handoff';
 import { doseName } from '@/lib/doseLabel';
 import { dateKey, longDate, spokenTime, TIME_OF_DAY_LABELS, weekdayLong } from '@/lib/time';
@@ -57,7 +58,6 @@ export default function GuardianHome() {
   const now = new Date();
   const summary = day?.[day.length - 1];
   const c = summary?.counts;
-  const elder = me.family.elder_display_name;
   const items = today?.items ?? [];
   const next = today?.next_event;
 
@@ -90,6 +90,11 @@ export default function GuardianHome() {
   const openList = open ?? [];
   const shown = expanded ? openList : openList.slice(0, limit);
   const hidden = openList.length - shown.length;
+  // 오늘 기록: 끝났거나 진행 중인 건을 정상이든 아니든 모두 보여 준다 (사용자 결정 2026-11-14).
+  // 아직 답을 기다리는 인계 건은 바로 위 '확인할 일'에 있으므로 여기서는 뺀다. 판정하면 이 목록으로 내려온다
+  const records = items
+    .filter((e) => !e.carried_over && e.state !== 'scheduled' && !(e.handoff && !e.handoff.verdict))
+    .sort((a, b) => recordAt(a).localeCompare(recordAt(b)));
 
   // 다음 할 일은 화면 아래에 고정한다 (확인할 일을 펼쳐도 보인다).
   // 기본은 다음 복약. 약통 남은 칸 행은 보호자가 채우는 집(elder_refill_prompt false)에서 곧 채워야 할 때만 (R-071)
@@ -148,7 +153,7 @@ export default function GuardianHome() {
     <GScreen inTabs dense footer={nextRows} onMeasure={onMeasure}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
         <GText variant="title" accessibilityRole="header">
-          {elder} 오늘
+          오늘
         </GText>
         <GText variant="label" color={C.sub}>
           {longDate(now)} {weekdayLong(now)}
@@ -256,8 +261,50 @@ export default function GuardianHome() {
           </ListGroup>
         </View>
       ) : null}
+
+      {/* 오늘 기록 */}
+      {records.length > 0 ? (
+        <View style={{ marginTop: -8 }}>
+          <SectionTitle>오늘 기록</SectionTitle>
+          <ListGroup style={{ marginTop: 4 }}>
+            {records.map((ev) => {
+              const st = doseStatus(ev);
+              const photo = ev.photos[ev.photos.length - 1];
+              const when = spokenTime(new Date(recordAt(ev)));
+              return (
+                <Pressable
+                  key={ev.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${doseName(ev)} 약, ${when}, ${st.label}${ev.is_simulated ? ', 시뮬레이션' : ''}. 자세히 보기`}
+                  onPress={() => openEvent(ev)}
+                  style={({ pressed }) => [styles.record, pressed && { backgroundColor: C.neutralSoft }]}
+                >
+                  {photo ? (
+                    <RemotePhoto photo={photo} style={styles.thumb} label={`${doseName(ev)} 약통 사진`} />
+                  ) : (
+                    <IconBubble name="pill" tone="neutral" size={44} />
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <GText variant="bodyStrong">{doseName(ev)} 약</GText>
+                    <GText variant="sub" color={C.sub}>
+                      {when}
+                      {ev.is_simulated ? ' · 시뮬레이션' : ''}
+                    </GText>
+                  </View>
+                  <StatusChip tone={st.tone} label={st.label} icon={st.icon} />
+                </Pressable>
+              );
+            })}
+          </ListGroup>
+        </View>
+      ) : null}
     </GScreen>
   );
+}
+
+/** 기록 시각: 사진을 찍은 시각, 없으면 예정 시각 */
+function recordAt(ev: DoseEvent): string {
+  return ev.photos.length ? ev.photos[ev.photos.length - 1].taken_at : ev.scheduled_at;
 }
 
 function SetupCard({
@@ -293,5 +340,7 @@ function SetupCard({
 }
 
 const styles = StyleSheet.create({
+  record: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingVertical: 8, marginHorizontal: -8, paddingHorizontal: 8, borderRadius: 8 },
+  thumb: { width: 60, height: 45, borderRadius: 6, backgroundColor: C.neutralSoft },
   more: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 48, marginHorizontal: -8, paddingHorizontal: 8 },
 });

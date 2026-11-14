@@ -23,8 +23,9 @@ npx tsc --noEmit        # 타입 검사
 
 - 서버가 모의 판독 중이면(`GET /me` 의 `server.reader_is_mock`) 모든 화면 맨 위에 **"모의 판독 (실제 AI 아님)"** 띠가 보인다. 모의 서버(`mock`)면 "모의 서버"도 붙는다
 - 판독 결과 옆에는 "AI 판독 · 모의 결과", 결과 화면에는 "모의 결과" 배지가 붙는다
-- 시연 트리거(`POST /dev/dose-events`)로 연 복약 건은 **"시뮬레이션"** 으로 표시된다. 띠의 [개발] 버튼에서 연다 (모의 서버이거나, 시연 가족 + 서버 `DEMO_MODE` 일 때만 보임)
+- 시연 트리거(`POST /dev/dose-events`)로 연 복약 건은 **"시뮬레이션"** 으로 표시된다. 시연 도구(`dev.tsx`)에서 연다. 모의 서버·모의 판독이면 띠의 [개발] 버튼으로, 실제 판독을 쓰는 시연 가족(서버 `DEMO_MODE`)이면 띠가 없으므로 **어르신 홈의 날짜를 길게 누르거나 보호자 설정 탭의 "시연 도구"** 로 연다. 오늘 요일의 모든 시간대를 고를 수 있다 (시각이 지난 시간대도 서버가 시연용으로 만들어 준다)
 - **모의 판독 시나리오** (`POST /dev/mock-scenario`, api.md 3.28): 개발 도구에서 다음 복약 사진 1장의 모의 판독 결과(정상 / 애매 / 칸 그대로 / 이중 의심)를 고른다. 재촬영·안내·인계는 서버 규칙대로 진행된다. 모의 서버이거나, 실제 서버의 시연 가족 + `DEMO_MODE` + mock 판독기일 때만 보인다. 고른 값은 띠에 "다음 사진: …"으로 보인다
+- **실제 판독이면 맨 위 띠는 나오지 않는다** (시연 가족이어도). 모의 판독일 때만 띠가 보인다
 - 모의 서버의 개발 도구에는 시간 흘려보내기(재질문 → 무응답 인계), 오늘 기록 초기화, 역할 바꾸기도 있다
 - 서버의 상태 반영(무응답 인계 등)은 1분 예약 작업이 해서 최대 1분 늦다. 어르신 질문 화면·대기 홈, 보호자 홈은 화면이 보이는 동안 30초마다 다시 읽는다
 - 웹에서 실제 서버를 쓰려면 서버의 `CORS_ORIGINS`에 웹 주소가 있어야 한다 (기본 `localhost:8081`). `npx expo start --web` 의 기본 포트가 8081 이다
@@ -55,14 +56,34 @@ npx tsc --noEmit        # 타입 검사
 | 어르신 로컬 알림 (iOS) | 확인 못 함 (iOS 시뮬레이터 없음) | ✓ |
 | iOS 시간 민감 알림 | ✕ (entitlement 는 빌드에만 들어감) | ✓ (Apple 개발자 계정에 Time Sensitive Notifications 기능 필요) |
 | 보호자 원격 푸시 (Android) | ✕ (Android 는 SDK 53 부터 Expo Go 에서 불가) | ✓ `GOOGLE_SERVICES_JSON` 을 주고 빌드해야 한다 (아래 "보호자 푸시"). 없이 만든 빌드는 G8 에 "푸시 설정이 없어 알림을 받을 수 없어요" |
-| 잠금 화면 위 전체 화면 E4 (full-screen intent) | ✕ | 아직 없음. 아래 조사 참고 |
+| 잠금 화면 위 전체 화면 E4 (full-screen intent) | ✕ | 선택 기능 (아래 "화면에 띄우기"). S22 Ultra(Android 16) 개발 빌드에서 시험 알람으로 확인. release APK 에서는 선택 화면까지만 확인 |
 
-### full-screen intent (조사만, 구현 안 함)
+### 화면에 띄우기 (full-screen intent, 선택 기능)
 
-- `expo-notifications` 에는 full-screen intent API 가 없다
-- 필요한 것: `USE_FULL_SCREEN_INTENT` 권한, 알림에 `setFullScreenIntent(E4 를 여는 PendingIntent)`, E4 를 띄울 Activity 에 `showWhenLocked`·`turnScreenOn`
-- Android 14(API 34)부터 이 권한은 통화·알람 앱 외에는 기본 거부다. 앱이 `NotificationManager.canUseFullScreenIntent()` 로 확인하고, 안 되면 `Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT` 화면으로 보내 보호자가 대신 켜게 해야 한다 (UI 설계 4장의 안내 화면). Google Play 배포 시 권한 사용 신고가 필요하다
-- 방법: ① `@notifee/react-native` (fullScreenAction 지원, 마지막 릴리스 2024-12 라 RN 0.88·New Architecture 호환을 따로 확인해야 함) ② 작은 Expo 네이티브 모듈(Kotlin) + config plugin 으로 직접 구현. 유지보수 위험이 작은 ②를 권한다. 둘 다 개발 빌드가 필요하다
+어르신 폰 연결·동의 직후 보호자가 **"화면에 띄우기 / 알림으로만 받기"** 중에 고른다 (`elder/ask-mode`). 고른 값은 그 폰에만 저장하고(서버·API 변경 없음), 연결을 해제하면 지워져 다시 고른다. 기본 동작(고르지 않았거나 "알림으로만 받기")은 지금까지의 알림 그대로다.
+
+- `expo-notifications` 에는 full-screen intent API 가 없어서 작은 네이티브 모듈을 직접 만들었다: `modules/woowang-fullscreen` (Kotlin, Expo 자동 연결. prebuild 없이 gradle 만 다시 돌리면 들어간다)
+  - `AlarmStore`: 복약 시각마다 `AlarmManager.setAlarmClock` 예약 (정확한 알람 권한이 없으면 `setAndAllowWhileIdle`). 재부팅·앱 업데이트 뒤 다시 건다 (`BootReceiver`)
+  - `DoseAlarmReceiver`: 시각이 되면 채널 `dose-ask-screen` 으로 알림을 내고 `setFullScreenIntent` 로 질문 화면(E4) 딥링크를 연다. 화면이 꺼졌거나 잠겨 있으면 화면이 바로 열리고, 폰을 쓰는 중이면 위쪽 알림으로 보인다 (Android 동작)
+  - `WoowangFullScreenPackage`: 이 알람으로 열린 경우에만 `setShowWhenLocked`·`setTurnScreenOn` 을 켠다. 앱 아이콘이나 보호자 푸시로 연 화면은 잠금 해제 뒤에 보인다
+- 예약은 `src/notify/elderSchedule.ts` 가 같은 목록으로 한다. "화면에 띄우기"이고 권한이 있으면 네이티브 알람만 예약하고 일반 알림은 지운다 (두 번 울리지 않게). 권한이 꺼지면 다음 동기화에서 일반 알림으로 돌아간다 (`src/notify/fullScreen.ts`)
+- Android 14(API 34)부터 `USE_FULL_SCREEN_INTENT` 는 통화·알람 앱 외에는 기본 거부다. 선택 화면이 `canUseFullScreenIntent()` 로 확인하고, 꺼져 있으면 [설정 열기]로 "전체 화면 알림" 설정에 보낸다. Google Play 배포 시 권한 사용 신고가 필요하다
+- 선택 화면에서 "화면에 띄우기"를 고르면 **[15초 뒤 시험하기]** 로 그 폰에서 되는지 바로 볼 수 있다 (시험 알람은 어르신 홈을 연다)
+- 알람으로 띄운 화면은 실제로 앞에 나온 뒤 화면이 꺼지거나 홈으로 나가면 잠금 화면 위 표시를 되돌린다. 되돌리지 않으면 전원 버튼으로 꺼도 화면이 다시 켜지고, 앞에 나오기 전에 되돌리면 화면이 켜지지 않는다 (둘 다 실기기에서 겪음, `WoowangFullScreenPackage.kt`)
+- **확인한 것 (2026-11-13, S22 Ultra·Android 16, 개발 빌드):** 잠금·화면 꺼짐 상태에서 시험 알람이 화면을 켜고 잠금 화면 위로 앱을 띄움 → 어르신 홈 이동, 앱 프로세스를 종료한 상태에서도 같음, 화면을 끄면 다시 잠기고 켜면 잠금 화면이 나옴, "화면에 띄우기"면 네이티브 알람만 21개·"알림으로만 받기"면 기존 알림만 21개. **확인 못 한 것:** 실제 복약 건 알람이 E4 로 가는지(시험 알람은 홈), release APK, 재부팅 뒤 재예약, 다른 제조사·Android 14 이상에서 권한이 꺼진 경우의 설정 안내
+- iOS·웹·Expo Go 에는 이 모듈이 없어 선택 화면이 나오지 않고 알림 방식으로 동작한다
+
+## 시연용 샘플 사진 (시연 가족)
+
+약과 약통이 없어도 실제 서버의 실제 AI 판독을 해 볼 수 있게, 미리 찍어 둔 약통 사진을 고를 수 있다. **판독 결과를 정해 두지 않는다.** 고른 사진은 카메라로 찍은 사진과 똑같이 서버에 올라가 판독·분류된다.
+
+- 시연 가족(`is_demo` + 서버 `DEMO_MODE`)에서만, 사진을 찍는 세 화면(약통 등록, 약통 채우기, 어르신 복약 촬영)에 **"샘플 사진 고르기 (시연용)"** 버튼이 나온다. 카메라도 그대로 쓸 수 있다
+- 사진은 `assets/demo/` 에 있다 (직접 찍은 사진, 긴 변 1600). 사진마다 오른쪽 아래에 **"샘플 사진"** 글자가 들어 있어 기록·인계 화면에서도 샘플임이 보인다 (대회 규정)
+  - 3칸 약통(아침·점심·저녁): 모두 참 / 아침 빔 / 아침·점심 빔 / 모두 빔 / 비스듬히 / 흔들림
+  - 7칸 약통(월~일): 월요일 칸부터 0~7칸 비운 8장 / 비스듬히. 오늘 요일에 맞는 사진에 "오늘 드시기 전", "오늘 드신 뒤" 안내가 붙는다
+- 복약 촬영과 약통 채우기에서는 등록된 약통과 칸 수가 같은 사진만 보인다 (다른 약통 사진은 판독이 "애매"로 나온다)
+- Android release 빌드에서는 사진이 앱 리소스로 들어가 파일 주소가 없다. 올리기 전에 캐시 폴더에 파일로 복사한다 (`src/lib/demoPhotos.ts`)
+- **확인한 것 (2026-11-14, S22 Ultra, release APK + 실제 서버·실제 판독):** 샘플 사진 업로드와 판독, 약통 구조 인식, 인계 푸시 도착. 사진 15장은 실제 판독기로 각각 확인했다 (3칸 "아침·점심 빔"은 6회 중 6회 정확)
 
 ## 보호자 푸시 (Firebase, R-039)
 
@@ -154,7 +175,7 @@ apksigner verify --print-certs android/app/build/outputs/apk/release/app-release
 adb install -r android/app/build/outputs/apk/release/app-release.apk
 ```
 
-- release APK 는 Metro 없이 JS 가 APK 안에 들어간다. 개발 도구 띠([개발])는 모의 서버이거나 시연 가족 + 서버 `DEMO_MODE` 일 때만 보인다
+- release APK 는 Metro 없이 JS 가 APK 안에 들어간다. 시연 도구는 모의 서버이거나 시연 가족 + 서버 `DEMO_MODE` 일 때만 열린다 (위 "모의 표시")
 - **release 는 `http://` 서버에 붙지 않는다** (Android 기본값: 평문 HTTP 는 디버그 빌드만 허용). 서버 주소는 `https://` 터널 주소여야 한다. 로컬 `http://10.0.2.2:8000` 으로 시험하려면 개발 빌드를 쓴다
 - 시험 결과 (2026-10-30, 맥 M 계열, 시험용 키): `assembleRelease` 11분 15초, APK 121MB (4개 ABI 포함), `apksigner` v2 서명 확인, 패키지 `kr.dementiacheck.app`. 속성 없이 빌드하면 `packageRelease` 에서 멈춤 확인
 - APK 는 저장소에 넣지 않는다
@@ -208,7 +229,8 @@ adb install -r ~/woowang-apks/woowang-guardian.apk
 |---|---|
 | `src/app/` | expo-router 화면. `elder/` 어르신(E1~E8), `guardian/` 보호자(G1~G8), `role.tsx` 역할 선택, `dev.tsx` 개발·시연 도구 |
 | `src/api/` | 데이터 접근의 유일한 지점. `types.ts` 계약서(DOCS `docs/design/api.md`) 타입, `client.ts` 인터페이스, `http.ts` 실제 서버, `mock.ts` 모의 서버, `errors.ts` 오류 코드 |
-| `src/components/` | 큰 버튼, 카메라(가이드 틀), 약통 격자 그림, 판독 사진, 모의 띠 |
+| `src/components/` | 큰 버튼, 카메라(가이드 틀), 시연용 샘플 사진 고르기, 약통 격자 그림, 판독 사진, 모의 띠 |
+| `assets/demo/` | 시연용 약통 사진 (위 "시연용 샘플 사진") |
 | `app.config.js` | `app.json` 위에 저장소 밖 설정(`GOOGLE_SERVICES_JSON`)과 보호자용 빌드 변형(`APP_VARIANT`)을 얹는다 |
 | `plugins/withReleaseSigning.js` | release APK 서명 설정 (값은 Gradle 속성, 저장소 밖) |
 

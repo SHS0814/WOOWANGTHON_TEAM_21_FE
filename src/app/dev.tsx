@@ -2,10 +2,11 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { api, isApiError, type DoseEvent, type MockScenario } from '@/api';
+import { api, isApiError, type MockScenario, type Slot } from '@/api';
 import { onPendingScenario, pendingScenario, SCENARIO_LABELS, setPendingScenario } from '@/lib/devScenario';
 import { goBackOr } from '@/lib/nav';
 import { useRole } from '@/lib/role';
+import { seoulDay } from '@/lib/seoulTime';
 import { TIME_OF_DAY_LABELS } from '@/lib/time';
 import { useApiData } from '@/lib/useApiData';
 import { useMe } from '@/lib/useMe';
@@ -22,6 +23,7 @@ export default function DevPanel() {
   const [msg, setMsg] = useState('');
   const { data: today } = useApiData(() => api.today().catch(() => null));
   const { data: me } = useMe();
+  const { data: schedule } = useApiData(() => api.schedule().catch(() => null));
   useEffect(() => onPendingScenario(() => setScenario(pendingScenario())), []);
 
   // 3.28 은 데모 가족 + DEMO_MODE + mock 판독기일 때만 된다. 아니면 숨긴다
@@ -38,11 +40,11 @@ export default function DevPanel() {
   };
 
   // 3.27: 오늘 그 칸의 건이 아직 scheduled 이면 지금 시각으로 앞당긴다
-  const simulate = async (ev: DoseEvent) => {
+  const simulate = async (slot: Slot) => {
     try {
-      const opened = await api.simulateDose(ev.slot.id);
+      const opened = await api.simulateDose(slot.id);
       if (role === 'elder') {
-        router.dismissAll();
+        if (router.canDismiss()) router.dismissAll();
         router.push({ pathname: '/elder/ask/[id]', params: { id: opened.id } });
       } else setMsg('어르신 폰에 질문 화면이 열린 상태가 됐어요.');
     } catch (e) {
@@ -50,7 +52,13 @@ export default function DevPanel() {
     }
   };
 
-  const scheduled = today?.items.filter((e) => e.state === 'scheduled') ?? [];
+  // 오늘 요일의 모든 시간대를 보여 준다. 시각이 이미 지난 뒤에 일정을 저장하면 오늘 건이 없지만,
+  // 서버가 시연용으로 만들어 준다 (3.27). 이미 진행된 건(오늘 건이 있고 예정 상태가 아님)만 뺀다
+  const weekday = seoulDay(new Date()).weekday;
+  const started = new Set((today?.items ?? []).filter((e) => !e.carried_over && e.state !== 'scheduled').map((e) => e.slot.id));
+  const scheduled = (schedule?.slots ?? [])
+    .filter((s) => s.weekday === weekday && !started.has(s.id))
+    .sort((a, b) => a.dose_time.localeCompare(b.dose_time));
 
   return (
     <ScrollView contentContainerStyle={styles.root}>
@@ -86,7 +94,7 @@ export default function DevPanel() {
 
       <Text style={styles.label}>지금 약 시간 시뮬레이션</Text>
       {scheduled.length ? (
-        scheduled.map((ev) => <Btn key={ev.id} label={`${TIME_OF_DAY_LABELS[ev.slot.time_of_day]} 약 시간 시뮬레이션`} onPress={() => simulate(ev)} />)
+        scheduled.map((slot) => <Btn key={slot.id} label={`${TIME_OF_DAY_LABELS[slot.time_of_day]} 약 시간 시뮬레이션`} onPress={() => simulate(slot)} />)
       ) : (
         <Text style={styles.msg}>{today === null ? '오늘 일정을 읽지 못했어요.' : '오늘 아직 시작하지 않은 약 시간이 없어요.'}</Text>
       )}
@@ -125,7 +133,7 @@ export default function DevPanel() {
           // 실제 서버에서는 이 기기의 토큰을 지운다. 서버의 기기 연결은 G8 에서 해제한다
           if (!dev) await api.forgetToken();
           await setRole(null);
-          router.dismissAll();
+          if (router.canDismiss()) router.dismissAll();
           router.replace('/role');
         }}
       />

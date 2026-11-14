@@ -49,6 +49,7 @@ export default function Refill() {
           size="guardian"
           instruction="채운 약통을 찍어주세요"
           aspect={pillboxAspect(box.pillbox.layout)}
+          sampleCols={box.pillbox.layout.cols}
           onCapture={async (photo) => {
             setStep('saving');
             setMsg('');

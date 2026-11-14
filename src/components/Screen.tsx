@@ -9,6 +9,8 @@ interface Props {
   children: ReactNode;
   /** 화면 하단에 고정되는 행동 영역 (어르신 화면은 버튼 하나) */
   footer?: ReactNode;
+  /** 화면 맨 위에 고정되는 줄 (어르신 대기 홈의 '나가기') */
+  header?: ReactNode;
   scroll?: boolean;
   center?: boolean;
   /**
@@ -20,12 +22,15 @@ interface Props {
   scrollRef?: Ref<ScrollViewInstance>;
 }
 
+/** 하단 버튼과 폰의 내비게이션 버튼(뒤로·홈) 사이 간격. 붙어 있으면 같이 눌릴 수 있다 */
+const FOOTER_GAP = 28;
+
 export function Screen({ keyboardAware, ...props }: Props) {
   return keyboardAware ? <KeyboardScreen {...props} /> : <PlainScreen {...props} />;
 }
 
 /** 기본 화면 (T-FE23 이전과 같은 코드) */
-function PlainScreen({ children, footer, scroll, center }: Omit<Props, 'keyboardAware'>) {
+function PlainScreen({ children, footer, header, scroll, center }: Omit<Props, 'keyboardAware'>) {
   const insets = useSafeAreaInsets();
   const body = scroll ? (
     <ScrollView contentContainerStyle={[styles.content, center && styles.center]}>{children}</ScrollView>
@@ -33,7 +38,8 @@ function PlainScreen({ children, footer, scroll, center }: Omit<Props, 'keyboard
     <View style={[styles.content, styles.fill, center && styles.center]}>{children}</View>
   );
   return (
-    <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+    <View style={[styles.root, { paddingBottom: insets.bottom + FOOTER_GAP }]}>
+      {header ? <View style={styles.header}>{header}</View> : null}
       {body}
       {footer ? <View style={styles.footer}>{footer}</View> : null}
     </View>
@@ -52,7 +58,7 @@ function KeyboardScreen({ children, footer, scroll, center, scrollRef }: Omit<Pr
     <View style={[styles.content, styles.fill, center && styles.center]}>{children}</View>
   );
   return (
-    <View ref={kb.ref} style={[styles.root, { paddingBottom: kb.overlap > 0 ? kb.overlap : Math.max(insets.bottom, 16) }]}>
+    <View ref={kb.ref} style={[styles.root, { paddingBottom: kb.overlap > 0 ? kb.overlap : insets.bottom + FOOTER_GAP }]}>
       {body}
       {footer ? <View style={styles.footer}>{footer}</View> : null}
     </View>
@@ -65,4 +71,5 @@ const styles = StyleSheet.create({
   content: { padding: GUTTER, gap: 20, flexGrow: 1 },
   center: { justifyContent: 'center' },
   footer: { paddingHorizontal: GUTTER, gap: 12 },
+  header: { paddingHorizontal: GUTTER, paddingTop: 8 },
 });

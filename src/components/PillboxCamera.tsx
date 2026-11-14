@@ -5,6 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api, type LocalPhoto } from '@/api';
 import { BigButton } from '@/components/BigButton';
+import { DemoPhotoButton, DemoPhotoPicker } from '@/components/DemoPhotoPicker';
+import { useMe } from '@/lib/useMe';
 import { colors } from '@/theme';
 
 interface Props {
@@ -13,16 +15,33 @@ interface Props {
   aspect: number;
   onCapture: (photo: LocalPhoto) => void;
   size?: 'elder' | 'guardian';
+  /** 등록된 약통의 칸 수 (시연용 샘플 사진을 같은 약통 것만 보여 줄 때). 약통 등록 화면은 주지 않는다 */
+  sampleCols?: number;
 }
 
 /** 약통 촬영 화면 (E5, G2, G7 공용). 가이드 틀과 아주 큰 셔터 하나 */
-export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder' }: Props) {
+export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder', sampleCols }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const ref = useRef<CameraView>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const insets = useSafeAreaInsets();
   const big = size === 'elder';
+  // 시연 가족이면 카메라 대신 미리 찍어 둔 약통 사진도 고를 수 있다 (판독은 똑같이 실제 서버가 한다)
+  const { data: me } = useMe();
+  const demo = api.mode !== 'mock' && !!me && me.family.is_demo && me.server.demo_mode;
+  const [picking, setPicking] = useState(false);
+  const picker = demo ? (
+    <DemoPhotoPicker
+      visible={picking}
+      cols={sampleCols}
+      onClose={() => setPicking(false)}
+      onPick={(uri) => {
+        setPicking(false);
+        onCapture({ uri, taken_at: new Date().toISOString() });
+      }}
+    />
+  ) : null;
 
   const capture = (uri: string | null) => onCapture({ uri, taken_at: new Date().toISOString() });
 
@@ -52,6 +71,8 @@ export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder' }
         ) : canSkip ? null : (
           <Text style={[styles.permText, { fontSize: big ? 30 : 22 }]}>설정에서 카메라를 허용해 주세요.</Text>
         )}
+        {demo ? <DemoPhotoButton onPress={() => setPicking(true)} /> : null}
+        {picker}
         {canSkip ? (
           <Pressable onPress={() => capture(null)} accessibilityRole="button" style={styles.skip}>
             <Text style={styles.skipText}>개발용: 카메라 없이 계속 (모의 사진)</Text>
@@ -65,7 +86,10 @@ export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder' }
     <View style={styles.root}>
       <CameraView ref={ref} style={StyleSheet.absoluteFill} facing="back" onCameraReady={() => setReady(true)} />
       <View style={styles.overlay} pointerEvents="box-none">
-        <Text style={[styles.instruction, { fontSize: big ? 32 : 24 }]}>{instruction}</Text>
+        <View style={{ alignSelf: 'stretch', gap: 10 }}>
+          <Text style={[styles.instruction, { fontSize: big ? 32 : 24 }]}>{instruction}</Text>
+          {demo ? <DemoPhotoButton onPress={() => setPicking(true)} /> : null}
+        </View>
         <View style={[styles.guide, { aspectRatio: aspect }]} accessibilityLabel="약통을 이 틀에 맞춰 주세요">
           <View style={[styles.corner, styles.tl]} />
           <View style={[styles.corner, styles.tr]} />
@@ -89,6 +113,7 @@ export function PillboxCamera({ instruction, aspect, onCapture, size = 'elder' }
           ) : null}
         </View>
       </View>
+      {picker}
     </View>
   );
 }

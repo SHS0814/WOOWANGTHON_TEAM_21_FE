@@ -56,6 +56,9 @@ export default function Connect() {
         platform,
         ...(CREATE_DEMO_FAMILY ? { is_demo: true } : {}),
       });
+      // 새 가족의 보호자 기기에 푸시 토큰을 등록한다. 같은 앱에서 가족을 다시 만들면 예전 등록 상태가 남아 있어
+      // 레이아웃의 자동 등록이 건너뛰므로 여기서 직접 부른다
+      void registerGuardianPush();
       await issue();
     } catch (e) {
       setError(guardianMessage(e));

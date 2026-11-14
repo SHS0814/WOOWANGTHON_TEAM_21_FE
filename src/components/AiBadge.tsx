@@ -12,12 +12,12 @@ interface Props {
 
 /**
  * 판독 결과 옆에 붙는 표시. 누가 판단했는지 구분한다 (원칙 1, 헌장 6장).
- * 정보 부분("AI 확인", "○○ 판정")과 모의 표시 부분("모의 결과")을 나눈다 (R-021 Q-003).
+ * 정보 부분(어르신 "사진으로 확인", 보호자 "AI 판독", "○○ 판정")과 모의 표시 부분("모의 결과")을 나눈다 (R-021 Q-003).
  * 어르신 화면의 정보 부분은 28pt 이상, 모의 표시는 18pt 이상이다
  */
 export function JudgeBadge({ kind, isMock, guardianName, size = 'guardian' }: Props) {
   const elder = size === 'elder';
-  const info = kind === 'ai' ? (elder ? 'AI 확인' : 'AI 판독') : `${guardianName ?? '보호자'} 판정`;
+  const info = kind === 'ai' ? (elder ? '사진으로 확인' : 'AI 판독') : `${guardianName ?? '보호자'} 판정`;
   return (
     <View style={styles.row}>
       <View style={styles.badge}>
